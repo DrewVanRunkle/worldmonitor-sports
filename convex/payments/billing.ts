@@ -2649,9 +2649,9 @@ export function checkoutBillingFamily(tierGroup: string): string {
 /**
  * Internal query used by checkout creation to prevent duplicate subscriptions.
  *
- * Blocks new checkout sessions when the user already has an active/on_hold
+ * Blocks new checkout sessions when the user already has an active
  * subscription in the same billing family (see checkoutBillingFamily —
- * api_starter and api_business count as one family), or a cancelled
+ * api_starter and api_business count as one family), or an on_hold/cancelled
  * subscription that still has time remaining in the current billing period.
  * This is an app-side guard only; Dodo's "Allow Multiple Subscriptions"
  * setting is still the provider-side backstop for races before webhook
@@ -2681,8 +2681,18 @@ export const getCheckoutBlockingSubscription = internalQuery({
           checkoutBillingFamily(existingCatalogEntry.tierGroup) !==
           checkoutBillingFamily(targetCatalogEntry.tierGroup)
         ) return false;
-        if (sub.status === "active" || sub.status === "on_hold") return true;
-        return sub.status === "cancelled" && sub.currentPeriodEnd > now;
+        if (sub.status === "active") return true;
+        // on_hold blocks only while still paid-through, same bound as
+        // cancelled: Dodo can leave a payment-failed sub on hold forever, and
+        // an unbounded block would permanently lock the user out of ever
+        // re-subscribing in this billing family (they can't pay us again
+        // because they once failed to pay us). Within the paid period the
+        // block stands — recovery belongs in the customer portal, not a
+        // duplicate checkout.
+        return (
+          (sub.status === "on_hold" || sub.status === "cancelled") &&
+          sub.currentPeriodEnd > now
+        );
       })
       .sort((a, b) => {
         const pa = getSubscriptionStatusPriority(a.status);
@@ -3531,11 +3541,7 @@ export const claimSubscription = mutation({
             .collect();
           let bestCoveringSubscription: (typeof realSubscriptions)[number] | null = null;
           for (const candidate of realSubscriptions) {
-            const covers =
-              candidate.status === "active" ||
-              candidate.status === "on_hold" ||
-              (candidate.status === "cancelled" && candidate.currentPeriodEnd > recomputeTimestamp);
-            if (!covers) continue;
+            if (!isCoveringAt(candidate, recomputeTimestamp)) continue;
             if (
               bestCoveringSubscription === null ||
               compareEntitlementPlans(
