@@ -1,5 +1,5 @@
-// Personal-use widget (VITE_ENABLE_SPORTS_SCORES): pulls today's scoreboard
-// from ESPN's public site API. No API key required, no first-party backend
+// Personal-use widget (VITE_ENABLE_SPORTS): pulls today's scoreboard from
+// ESPN's public site API. No API key required, no first-party backend
 // involved — this hits ESPN directly from the browser.
 
 export interface SportsGame {
@@ -13,6 +13,9 @@ export interface SportsGame {
   awayTeam: string;
   awayAbbr: string;
   awayScore: string;
+  venueName?: string;
+  venueCity?: string;
+  venueState?: string;
 }
 
 export interface SportsScoreboard {
@@ -40,11 +43,16 @@ interface EspnCompetitor {
   team: { displayName: string; abbreviation: string };
 }
 
+interface EspnVenue {
+  fullName?: string;
+  address?: { city?: string; state?: string; country?: string };
+}
+
 interface EspnEvent {
   id: string;
   shortName: string;
   status?: { type?: { state?: string; shortDetail?: string } };
-  competitions?: Array<{ competitors?: EspnCompetitor[] }>;
+  competitions?: Array<{ competitors?: EspnCompetitor[]; venue?: EspnVenue }>;
 }
 
 interface EspnScoreboardResponse {
@@ -66,10 +74,12 @@ async function fetchLeagueScoreboard(def: LeagueDef, signal: AbortSignal, date?:
 
   const games: SportsGame[] = [];
   for (const event of data.events ?? []) {
-    const competitors = event.competitions?.[0]?.competitors ?? [];
+    const competition = event.competitions?.[0];
+    const competitors = competition?.competitors ?? [];
     const home = competitors.find(c => c.homeAway === 'home');
     const away = competitors.find(c => c.homeAway === 'away');
     if (!home || !away) continue;
+    const venue = competition?.venue;
     games.push({
       id: event.id,
       shortName: event.shortName,
@@ -81,6 +91,9 @@ async function fetchLeagueScoreboard(def: LeagueDef, signal: AbortSignal, date?:
       awayTeam: away.team.displayName,
       awayAbbr: away.team.abbreviation,
       awayScore: away.score ?? '',
+      venueName: venue?.fullName,
+      venueCity: venue?.address?.city,
+      venueState: venue?.address?.state,
     });
   }
   return games;
