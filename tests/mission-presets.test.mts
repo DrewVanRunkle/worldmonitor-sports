@@ -374,6 +374,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
         globalThis.__missionToastMessages = globalThis.__missionToastMessages || [];
         globalThis.__missionToastMessages.push(message);
       }
+      export function generateId() { return 'id-' + Math.random().toString(36).slice(2); }
     `],
     ['@/utils/after-paint', `
       export function scheduleAfterFirstPaint(task) {

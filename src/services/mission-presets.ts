@@ -327,7 +327,7 @@ export const MISSION_PRESETS: readonly MissionPreset[] = [
   },
 ];
 
-const DYNAMIC_PANEL_PREFIXES = ['cw-', 'mcp-'];
+const DYNAMIC_PANEL_PREFIXES = ['cw-', 'mcp-', 'sports-streams-'];
 const MIN_PRESET_PANEL_MATCHES = 2;
 
 const isDynamicPanel = (key: string): boolean =>

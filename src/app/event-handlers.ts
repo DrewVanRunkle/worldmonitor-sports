@@ -16,6 +16,7 @@ import {
 } from '@/config/panels';
 import type { McpDataPanel } from '@/components/McpDataPanel';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
+import { removeSportsStreamsInstance, SPORTS_STREAMS_INSTANCE_PREFIX } from '@/services/sports-streams-instances';
 import type { PanelConfig, MapLayers, MilitaryFlight } from '@/types';
 import type { MapView } from '@/components/MapContainer';
 import type { PositionSample } from '@/services/aviation';
@@ -577,6 +578,21 @@ export class EventHandlerManager implements AppModule {
       if (panelId.startsWith('mcp-')) {
         if (!window.confirm(t('mcp.confirmDelete'))) return;
         deleteMcpPanel(panelId);
+        const panel = this.ctx.panels[panelId];
+        panel?.destroy();
+        delete this.ctx.panels[panelId];
+        delete this.ctx.panelSettings[panelId];
+        saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+        panel?.getElement()?.remove();
+        return;
+      }
+
+      // Extra multiscreen "My Live Streams" instances (base 'sports-streams'
+      // panel has no trailing hyphen, so it never matches this prefix and
+      // falls through to the ordinary disable path below).
+      if (panelId.startsWith(SPORTS_STREAMS_INSTANCE_PREFIX)) {
+        if (!window.confirm('Remove this Live Streams panel?')) return;
+        removeSportsStreamsInstance(panelId);
         const panel = this.ctx.panels[panelId];
         panel?.destroy();
         delete this.ctx.panels[panelId];
