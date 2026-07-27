@@ -1630,6 +1630,75 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
+  // Sports stream proxy — user-supplied IPTV .m3u8/.ts links (sports-streams
+  // panel). Fetches server-side to bypass the CORS/CORB wall these panels put
+  // up (built for VLC/Kodi, not browsers, so they never send CORS headers).
+  // For manifests, rewrites every segment/sub-playlist URI to route back
+  // through this same proxy so segment fetches don't hit the origin directly
+  // and re-fail CORS the same way the manifest did.
+  if (requestUrl.pathname === '/api/sports-stream-proxy') {
+    const targetUrl = requestUrl.searchParams.get('url');
+    if (!targetUrl) return json({ error: 'Missing url parameter' }, 400);
+
+    const safety = await isSafeUrl(targetUrl);
+    if (!safety.safe) {
+      context.logger.warn(`[local-api] sports-stream-proxy SSRF blocked: ${safety.reason} (url=${redactUrlForLog(targetUrl)})`);
+      return json({ error: safety.reason }, 403);
+    }
+
+    let parsed;
+    try {
+      parsed = new URL(targetUrl);
+    } catch {
+      return json({ error: 'Invalid url' }, 400);
+    }
+
+    try {
+      // Pin to the first IPv4 address validated by isSafeUrl() so the actual
+      // TCP connection goes to the same IP we checked, closing the TOCTOU
+      // DNS-rebinding window.
+      const pinnedV4 = safety.resolvedAddresses?.find(a => a.includes('.'));
+      const response = await fetchWithTimeout(targetUrl, {
+        headers: { 'User-Agent': CHROME_UA, 'Accept': '*/*' },
+        ...(pinnedV4 ? { resolvedAddress: pinnedV4 } : {}),
+      }, 12000);
+
+      if (response.status < 200 || response.status >= 300) {
+        return json({ error: `Upstream ${response.status}` }, response.status);
+      }
+
+      const contentType = response.headers?.get?.('content-type') || '';
+      const isManifest = parsed.pathname.toLowerCase().endsWith('.m3u8')
+        || contentType.includes('mpegurl') || contentType.includes('x-mpegurl');
+
+      if (isManifest) {
+        const basePath = parsed.pathname.substring(0, parsed.pathname.lastIndexOf('/') + 1);
+        const baseOrigin = parsed.origin;
+        const toProxyUrl = (uri) => {
+          const full = uri.startsWith('http') ? uri : `${baseOrigin}${basePath}${uri}`;
+          return `/api/sports-stream-proxy?url=${encodeURIComponent(full)}`;
+        };
+        let manifest = await response.text();
+        manifest = manifest.replace(/^(?!#)(\S+)/gm, (match) => toProxyUrl(match));
+        manifest = manifest.replace(/URI="([^"]+)"/g, (_m, uri) => `URI="${toProxyUrl(uri)}"`);
+        return new Response(manifest, {
+          status: 200,
+          headers: { 'content-type': 'application/vnd.apple.mpegurl', 'cache-control': 'no-cache' },
+        });
+      }
+
+      const body = Buffer.from(await response.arrayBuffer());
+      return new Response(body, {
+        status: 200,
+        headers: { 'content-type': contentType || 'application/octet-stream', 'cache-control': 'no-cache' },
+      });
+    } catch (e) {
+      const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
+      context.logger.warn(`[local-api] sports-stream-proxy error: ${e.message} (url=${redactUrlForLog(targetUrl)})`);
+      return json({ error: isTimeout ? 'Stream timeout' : 'Failed to fetch stream' }, isTimeout ? 504 : 502);
+    }
+  }
+
   if (requestUrl.pathname === '/api/local-env-update') {
     if (req.method === 'POST') {
       const body = await readBody(req);
