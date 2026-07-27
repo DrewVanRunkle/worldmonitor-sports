@@ -222,6 +222,16 @@ export class UnifiedSettings {
         return;
       }
 
+      if (target.closest('.panels-select-all')) {
+        this.setDraftPanelsEnabled(this.getVisiblePanelEntries().map(([key]) => key), true);
+        return;
+      }
+
+      if (target.closest('.panels-select-none')) {
+        this.setDraftPanelsEnabled(this.getVisiblePanelEntries().map(([key]) => key), false);
+        return;
+      }
+
       const panelItem = target.closest<HTMLElement>('.panel-toggle-item');
       if (panelItem?.dataset.panel) {
         if (panelItem.dataset.proLocked) {
@@ -586,6 +596,8 @@ export class UnifiedSettings {
           <div class="panel-toggle-grid" id="usPanelToggles"></div>
           <div class="panels-footer">
             <span class="panels-status" id="usPanelsStatus" aria-live="polite"></span>
+            <button class="panels-select-all">${t('common.selectAll')}</button>
+            <button class="panels-select-none">${t('common.selectNone')}</button>
             <button class="panels-save-layout">${t('modals.story.save')}</button>
             <button class="panels-reset-layout" title="${t('header.resetLayoutTooltip')}" aria-label="${t('header.resetLayoutTooltip')}">${t('header.resetLayout')}</button>
           </div>
@@ -964,6 +976,33 @@ export class UnifiedSettings {
       }
     }
     panel.enabled = !panel.enabled;
+    this.panelsJustSaved = false;
+    this.renderPanelsTab();
+  }
+
+  /**
+   * Bulk select-all/select-none for whatever panels the current
+   * category/search filter has visible (mirrors sources-select-all/
+   * sources-select-none). Turning panels OFF is always allowed; turning
+   * panels ON still respects Pro-entitlement and the free-plan panel cap,
+   * same as a single toggleDraftPanel — just without a toast per skip.
+   */
+  private setDraftPanelsEnabled(keys: string[], enabled: boolean): void {
+    const isPro = isProUser();
+    let freeEnabledCount = enabled && !isPro ? countFreePanelCapUsage(this.draftPanelSettings) : 0;
+    for (const key of keys) {
+      const panel = this.draftPanelSettings[key];
+      if (!panel) continue;
+      if (enabled) {
+        const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
+        if (!isPanelEntitled(key, resolvedPanel, isPro)) continue;
+        if (!panel.enabled && !isPro && isFreePanelCapCounted(key)) {
+          if (freeEnabledCount >= FREE_MAX_PANELS) continue;
+          freeEnabledCount++;
+        }
+      }
+      panel.enabled = enabled;
+    }
     this.panelsJustSaved = false;
     this.renderPanelsTab();
   }
