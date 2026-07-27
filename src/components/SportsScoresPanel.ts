@@ -35,23 +35,69 @@ function renderBoard(board: SportsScoreboard): string {
     </div>`;
 }
 
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function isToday(d: Date): boolean {
+  return startOfDay(d).getTime() === startOfDay(new Date()).getTime();
+}
+
+function renderDateNav(selectedDate: Date): string {
+  const label = selectedDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return `
+    <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:4px 8px 8px;font-size:12px">
+      <button type="button" data-sports-nav="prev" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:14px;padding:2px 6px">‹</button>
+      <span style="min-width:120px;text-align:center">${escapeHtml(label)}</span>
+      <button type="button" data-sports-nav="next" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:14px;padding:2px 6px">›</button>
+      ${isToday(selectedDate) ? '' : '<button type="button" data-sports-nav="today" style="background:none;border:1px solid rgba(255,255,255,0.15);border-radius:4px;color:var(--text-dim);cursor:pointer;font-size:10px;padding:2px 8px;margin-left:4px">Today</button>'}
+    </div>`;
+}
+
 export class SportsScoresPanel extends Panel {
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private selectedDate: Date = startOfDay(new Date());
 
   constructor() {
     super({ id: 'sports-scores', title: 'Sports Scores', showCount: false, collapsible: true });
+    this.content.addEventListener('click', (e) => {
+      const target = (e.target as HTMLElement).closest<HTMLElement>('[data-sports-nav]');
+      if (!target) return;
+      const nav = target.dataset.sportsNav;
+      if (nav === 'prev') this.changeDate(-1);
+      else if (nav === 'next') this.changeDate(1);
+      else if (nav === 'today') this.goToToday();
+    });
     void this.fetchData();
-    this.refreshTimer = setInterval(() => void this.fetchData(), REFRESH_MS);
+    this.refreshTimer = setInterval(() => {
+      if (isToday(this.selectedDate)) void this.fetchData();
+    }, REFRESH_MS);
+  }
+
+  private changeDate(deltaDays: number): void {
+    const next = new Date(this.selectedDate);
+    next.setDate(next.getDate() + deltaDays);
+    this.selectedDate = next;
+    void this.fetchData();
+  }
+
+  private goToToday(): void {
+    this.selectedDate = startOfDay(new Date());
+    void this.fetchData();
   }
 
   public async fetchData(): Promise<boolean> {
     try {
-      const boards = await fetchAllSportsScores(this.signal);
+      const boards = await fetchAllSportsScores(this.signal, this.selectedDate);
+      const nav = renderDateNav(this.selectedDate);
       if (boards.length === 0) {
-        this.showError('No games today', () => void this.fetchData());
-        return false;
+        this.setSafeContent(unsafeRawHtml(
+          `${nav}<div style="text-align:center;padding:12px;font-size:12px;color:var(--text-dim)">No games on this day</div>`,
+          'sports scores panel — empty state',
+        ));
+        return true;
       }
-      const html = boards.map(renderBoard).join('');
+      const html = nav + boards.map(renderBoard).join('');
       this.setSafeContent(unsafeRawHtml(html, 'sports scores panel — trusted static markup, escaped team/score fields'));
       return true;
     } catch (e) {

@@ -51,8 +51,15 @@ interface EspnScoreboardResponse {
   events?: EspnEvent[];
 }
 
-async function fetchLeagueScoreboard(def: LeagueDef, signal: AbortSignal): Promise<SportsGame[]> {
-  const url = `https://site.api.espn.com/apis/site/v2/sports/${def.slug}/scoreboard`;
+function formatEspnDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+}
+
+async function fetchLeagueScoreboard(def: LeagueDef, signal: AbortSignal, date?: Date): Promise<SportsGame[]> {
+  const url = `https://site.api.espn.com/apis/site/v2/sports/${def.slug}/scoreboard${date ? `?dates=${formatEspnDate(date)}` : ''}`;
   const resp = await fetch(url, { signal });
   if (!resp.ok) throw new Error(`ESPN ${def.label} scoreboard: ${resp.status}`);
   const data = await resp.json() as EspnScoreboardResponse;
@@ -79,9 +86,9 @@ async function fetchLeagueScoreboard(def: LeagueDef, signal: AbortSignal): Promi
   return games;
 }
 
-export async function fetchAllSportsScores(signal: AbortSignal): Promise<SportsScoreboard[]> {
+export async function fetchAllSportsScores(signal: AbortSignal, date?: Date): Promise<SportsScoreboard[]> {
   const results = await Promise.allSettled(
-    LEAGUES.map(async def => ({ label: def.label, games: await fetchLeagueScoreboard(def, signal) })),
+    LEAGUES.map(async def => ({ label: def.label, games: await fetchLeagueScoreboard(def, signal, date) })),
   );
   const boards: SportsScoreboard[] = [];
   for (const result of results) {
