@@ -2292,6 +2292,10 @@ export class PanelLayoutManager implements AppModule {
     // Global Giving panel (all variants)
     this.lazyDefaultPanel('giving', () => import('@/components/GivingPanel'), 'GivingPanel');
 
+    // Personal-use widget, gated by VITE_ENABLE_SPORTS_SCORES (see panels.ts).
+    // shouldCreatePanel only returns true when the flag was on at build time.
+    this.lazyDefaultPanel('sports-scores', () => import('@/components/SportsScoresPanel'), 'SportsScoresPanel');
+
     // Happy variant panels (lazy-loaded — only relevant for happy variant)
     if (SITE_VARIANT === 'happy') {
       this.lazyImportedPanel('positive-feed', () => import('@/components/PositiveNewsFeedPanel'), 'PositiveNewsFeedPanel', (PositiveNewsFeedPanel) => {
