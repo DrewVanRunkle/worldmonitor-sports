@@ -3,6 +3,20 @@ import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { parseM3u } from '@/utils/m3u-parser';
 import { addStream, addStreams, detectKind, loadStreams, removeStream, type SportsStreamEntry } from '@/services/sports-stream-store';
+import { loadFromStorage, saveToStorage } from '@/utils';
+import { fetchXtreamLiveChannels, normalizeXtreamBaseUrl, XtreamImportError, type XtreamCredentials } from '@/services/xtream-codes';
+
+// Shared across every SportsStreamsPanel instance, same as the stream list
+// itself — "where my channels come from" isn't a per-panel concept.
+const XC_CREDS_STORAGE_KEY = 'wm-sports-xc-creds';
+
+function loadXtreamCreds(): XtreamCredentials | null {
+  return loadFromStorage<XtreamCredentials | null>(XC_CREDS_STORAGE_KEY, null);
+}
+
+function saveXtreamCreds(creds: XtreamCredentials): void {
+  saveToStorage(XC_CREDS_STORAGE_KEY, creds);
+}
 
 // Above this many channels, rendering every row expanded at once (full
 // innerHTML rebuild on every click) gets noticeably sluggish — default all
@@ -59,6 +73,9 @@ export class SportsStreamsPanel extends Panel {
   private urlInput: HTMLInputElement;
   private m3uTextarea: HTMLTextAreaElement;
   private m3uUrlInput: HTMLInputElement;
+  private xcUrlInput: HTMLInputElement;
+  private xcUserInput: HTMLInputElement;
+  private xcPassInput: HTMLInputElement;
   private statusEl: HTMLElement;
   private playerEl: HTMLElement;
   private listEl: HTMLElement;
@@ -88,6 +105,15 @@ export class SportsStreamsPanel extends Panel {
     this.m3uUrlInput = h('input', { type: 'text', placeholder: 'Playlist URL (best-effort — often blocked by CORS)', style: `${INPUT_STYLE};flex:1` }) as HTMLInputElement;
     const importUrlBtn = h('button', { type: 'button', style: BTN_STYLE, onClick: () => void this.handleImportUrl() }, 'Load from URL');
 
+    // Xtream Codes (XC) panels expose a JSON API listing every channel —
+    // no clipboard/textarea size limit, and more reliable than parsing M3U
+    // text for providers with thousands of channels.
+    const savedCreds = loadXtreamCreds();
+    this.xcUrlInput = h('input', { type: 'text', placeholder: 'XC server URL (host:port)', value: savedCreds?.baseUrl ?? '', style: `${INPUT_STYLE};flex:2` }) as HTMLInputElement;
+    this.xcUserInput = h('input', { type: 'text', placeholder: 'Username', value: savedCreds?.username ?? '', style: `${INPUT_STYLE};flex:1` }) as HTMLInputElement;
+    this.xcPassInput = h('input', { type: 'password', placeholder: 'Password', value: savedCreds?.password ?? '', style: `${INPUT_STYLE};flex:1` }) as HTMLInputElement;
+    const xcFetchBtn = h('button', { type: 'button', style: BTN_STYLE, onClick: () => void this.handleXtreamFetch() }, 'Fetch channels');
+
     const addPanelBtn = h('button', {
       type: 'button',
       style: BTN_STYLE,
@@ -106,6 +132,7 @@ export class SportsStreamsPanel extends Panel {
       this.m3uTextarea,
       h('div', { style: 'display:flex;gap:6px' }, importTextBtn),
       h('div', { style: 'display:flex;gap:6px' }, this.m3uUrlInput, importUrlBtn),
+      h('div', { style: 'display:flex;gap:6px' }, this.xcUrlInput, this.xcUserInput, this.xcPassInput, xcFetchBtn),
       h('div', { style: 'display:flex;gap:6px' }, addPanelBtn),
       this.statusEl,
     );
@@ -179,6 +206,39 @@ export class SportsStreamsPanel extends Panel {
     } catch (e) {
       if (this.isAbortError(e)) return;
       this.setStatus('Failed to fetch — likely blocked by CORS. Paste the playlist text above instead.');
+    }
+  }
+
+  private async handleXtreamFetch(): Promise<void> {
+    const baseUrl = normalizeXtreamBaseUrl(this.xcUrlInput.value);
+    const username = this.xcUserInput.value.trim();
+    const password = this.xcPassInput.value;
+    if (!baseUrl) {
+      this.setStatus('Enter a valid XC server URL (host:port)');
+      return;
+    }
+    if (!username || !password) {
+      this.setStatus('Enter your XC username and password');
+      return;
+    }
+
+    this.setStatus('Fetching channels from server…');
+    const creds = { baseUrl, username, password };
+    try {
+      const entries = await fetchXtreamLiveChannels(creds, (url) =>
+        fetch(toStreamProxyUrl(url), { signal: this.signal }),
+      );
+      if (entries.length === 0) {
+        this.setStatus('Connected, but no live channels were returned');
+        return;
+      }
+      saveXtreamCreds(creds);
+      const result = addStreams(entries);
+      this.setStatus(this.formatImportStatus(result));
+      this.renderList();
+    } catch (e) {
+      if (this.isAbortError(e)) return;
+      this.setStatus(e instanceof XtreamImportError ? e.message : 'Failed to reach the XC server — check the URL and your network');
     }
   }
 
