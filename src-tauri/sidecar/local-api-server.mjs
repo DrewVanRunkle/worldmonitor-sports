@@ -1723,10 +1723,20 @@ async function dispatch(requestUrl, req, routes, context) {
         || contentType.includes('mpegurl') || contentType.includes('x-mpegurl');
 
       if (isManifest) {
-        const basePath = parsed.pathname.substring(0, parsed.pathname.lastIndexOf('/') + 1);
-        const baseOrigin = parsed.origin;
         const toProxyUrl = (uri) => {
-          const full = uri.startsWith('http') ? uri : `${baseOrigin}${basePath}${uri}`;
+          // Resolve per RFC 3986 (what every real HLS client does) instead
+          // of naively pasting baseOrigin+basePath+uri onto the front: an
+          // absolute path (/foo/bar) or protocol-relative reference
+          // (//host/path) is supposed to *replace* the base path, not
+          // follow it — naive concatenation of those produced a mangled
+          // double path (.../play/hls/<token>==//play/hls-nginx/...) that
+          // 404'd even though the token itself was valid.
+          let full;
+          try {
+            full = new URL(uri, parsed).toString();
+          } catch {
+            full = uri;
+          }
           // Carry the panel origin forward so each segment/sub-playlist
           // fetch — a fresh top-level request with no memory of how the
           // manifest itself got redirected here — still sends the Referer
