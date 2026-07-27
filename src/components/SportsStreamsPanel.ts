@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { parseM3u } from '@/utils/m3u-parser';
-import { addStream, addStreams, loadStreams, removeStream, type SportsStreamEntry } from '@/services/sports-stream-store';
+import { addStream, addStreams, detectKind, loadStreams, removeStream, type SportsStreamEntry } from '@/services/sports-stream-store';
 
 const BTN_STYLE = 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:var(--text);cursor:pointer;font-size:11px;padding:4px 10px;white-space:nowrap';
 const INPUT_STYLE = 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text);font-size:11px;padding:5px 8px;min-width:0';
@@ -26,6 +26,15 @@ function extractYoutubeId(url: string): string | null {
 
 function groupLabel(group?: string): string {
   return group && group.trim() ? group.trim() : 'Ungrouped';
+}
+
+// Xtream-Codes-style IPTV panels serve the same live channel at both .ts
+// (raw MPEG-TS — no browser natively demuxes this via <video>, and hls.js
+// expects an .m3u8 manifest, not a bare TS stream) and .m3u8 (HLS manifest)
+// on the identical path. Swap the extension for playback; the stored entry
+// keeps the original .ts URL as-imported.
+function toHlsPlaybackUrl(url: string): string {
+  return /\.ts(\?|$)/i.test(url) ? url.replace(/\.ts(\?|$)/i, '.m3u8$1') : url;
 }
 
 export class SportsStreamsPanel extends Panel {
@@ -187,9 +196,13 @@ export class SportsStreamsPanel extends Panel {
   }
 
   private playStream(id: string): void {
-    const stream = loadStreams().find(s => s.id === id);
-    if (!stream) return;
+    const stored = loadStreams().find(s => s.id === id);
+    if (!stored) return;
     this.teardownPlayer();
+    // Recompute kind fresh rather than trust the persisted value — entries
+    // imported before a detectKind change shipped would otherwise stay
+    // misclassified (e.g. stuck as 'iframe') until manually re-imported.
+    const stream: SportsStreamEntry = { ...stored, kind: detectKind(stored.url) };
 
     if (stream.kind === 'youtube') {
       const videoId = extractYoutubeId(stream.url);
@@ -222,6 +235,7 @@ export class SportsStreamsPanel extends Panel {
   }
 
   private async playHls(stream: SportsStreamEntry): Promise<void> {
+    const playbackUrl = toHlsPlaybackUrl(stream.url);
     const video = document.createElement('video');
     video.controls = true;
     video.autoplay = true;
@@ -230,7 +244,18 @@ export class SportsStreamsPanel extends Panel {
     this.playerEl.replaceChildren(video);
 
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = stream.url;
+      video.src = playbackUrl;
+      // The .ts -> .m3u8 swap is a heuristic (holds for Xtream-Codes-style
+      // panels, not guaranteed for every provider) — if it was wrong, retry
+      // the original URL once before giving up visibly instead of silently.
+      video.onerror = () => {
+        if (playbackUrl !== stream.url) {
+          video.onerror = null;
+          video.src = stream.url;
+        } else {
+          this.renderPlayerMessage('Failed to load this stream.');
+        }
+      };
       return;
     }
 
@@ -242,7 +267,17 @@ export class SportsStreamsPanel extends Panel {
       }
       const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
       this.hlsInstance = hls;
-      hls.loadSource(stream.url);
+      let triedOriginal = playbackUrl === stream.url;
+      hls.on(Hls.Events.ERROR, (_evt, data) => {
+        if (!data.fatal) return;
+        if (!triedOriginal) {
+          triedOriginal = true;
+          hls.loadSource(stream.url);
+          return;
+        }
+        this.renderPlayerMessage('Failed to load this stream.');
+      });
+      hls.loadSource(playbackUrl);
       hls.attachMedia(video);
     } catch {
       this.renderPlayerMessage('Failed to load HLS player.');

@@ -17,10 +17,18 @@ export interface SportsStreamEntry {
   group?: string;
 }
 
-function detectKind(url: string): SportsStreamEntry['kind'] {
+/** Exported so callers can recompute kind at use time rather than trust a
+ * possibly-stale persisted value (e.g. entries imported before a detectKind
+ * change shipped — see SportsStreamsPanel.playStream). */
+export function detectKind(url: string): SportsStreamEntry['kind'] {
   const u = url.toLowerCase();
   if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
-  if (u.includes('.m3u8')) return 'hls';
+  // .ts here is a raw MPEG-TS live stream link (common Xtream-Codes-style
+  // IPTV panel path: /live/<user>/<pass>/<id>.ts), not a TypeScript file —
+  // route it through the HLS player same as .m3u8; SportsStreamsPanel swaps
+  // the extension to .m3u8 at playback time since raw .ts isn't directly
+  // playable via <video>/hls.js, but the .m3u8 sibling on the same path is.
+  if (/\.m3u8(\?|$)/.test(u) || /\.ts(\?|$)/.test(u)) return 'hls';
   return 'iframe';
 }
 
