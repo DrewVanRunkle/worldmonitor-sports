@@ -16,6 +16,11 @@ const _desktop = isDesktopRuntime();
 // map-layer-definitions.ts and tests/browser-bundle-secret-guard (allowlist).
 const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
+// Personal-use widget, default OFF everywhere. Only exists in FULL_PANELS
+// (and therefore ALL_PANELS/VARIANT_DEFAULTS) when explicitly enabled via
+// local .env, so it never appears for other users/deployments.
+const SPORTS_SCORES_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS_SCORES === 'true';
+
 // ============================================
 // FULL VARIANT (Geopolitical)
 // ============================================
@@ -127,6 +132,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'deduction': { name: 'Deduct Situation', enabled: false, priority: 1, premium: 'locked' as const },
   'geo-hubs': { name: 'Geopolitical Hubs', enabled: false, priority: 2 },
   'tech-hubs': { name: 'Hot Tech Hubs', enabled: false, priority: 2 },
+  ...(SPORTS_SCORES_ENABLED && { 'sports-scores': { name: 'Sports Scores', enabled: true, priority: 2 } }),
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
