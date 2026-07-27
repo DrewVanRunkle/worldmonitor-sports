@@ -1649,6 +1649,12 @@ async function dispatch(requestUrl, req, routes, context) {
     // passes the check can still 302 to an internal address).
     const MAX_REDIRECTS = 5;
     let currentUrl = targetUrl;
+    // Browsers send a Referer (origin-only, per the strict-origin-when-cross-
+    // origin default policy) on the follow-up request when a redirect
+    // crosses origins. A raw https.request sends none unless we set it
+    // ourselves, and CDN edges commonly reject referrer-less requests —
+    // masked as 404 rather than 403, same as the User-Agent check.
+    let previousOrigin = null;
     let parsed;
     let response;
 
@@ -1670,7 +1676,11 @@ async function dispatch(requestUrl, req, routes, context) {
         // TOCTOU DNS-rebinding window.
         const pinnedV4 = safety.resolvedAddresses?.find(a => a.includes('.'));
         response = await fetchWithTimeout(currentUrl, {
-          headers: { 'User-Agent': CHROME_UA, 'Accept': '*/*' },
+          headers: {
+            'User-Agent': CHROME_UA,
+            'Accept': '*/*',
+            ...(previousOrigin ? { 'Referer': `${previousOrigin}/` } : {}),
+          },
           ...(pinnedV4 ? { resolvedAddress: pinnedV4 } : {}),
         }, 12000);
 
@@ -1680,6 +1690,7 @@ async function dispatch(requestUrl, req, routes, context) {
             if (hop >= MAX_REDIRECTS) {
               return json({ error: 'Too many redirects' }, 502);
             }
+            previousOrigin = parsed.origin;
             currentUrl = new URL(location, currentUrl).toString();
             continue;
           }
