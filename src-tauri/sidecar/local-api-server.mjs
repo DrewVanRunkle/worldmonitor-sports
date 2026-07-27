@@ -1640,28 +1640,52 @@ async function dispatch(requestUrl, req, routes, context) {
     const targetUrl = requestUrl.searchParams.get('url');
     if (!targetUrl) return json({ error: 'Missing url parameter' }, 400);
 
-    const safety = await isSafeUrl(targetUrl);
-    if (!safety.safe) {
-      context.logger.warn(`[local-api] sports-stream-proxy SSRF blocked: ${safety.reason} (url=${redactUrlForLog(targetUrl)})`);
-      return json({ error: safety.reason }, 403);
-    }
-
+    // Xtream-Codes-style IPTV panels almost universally 302 the manifest/
+    // segment request to a token-signed CDN edge URL, and fetchWithTimeout's
+    // https: path uses raw https.request (needed for DNS-pinning), which —
+    // unlike fetch() — never follows redirects on its own. Follow them here,
+    // re-running the SSRF check on every hop: blindly following an
+    // unvalidated redirect target is a classic SSRF bypass (a URL that
+    // passes the check can still 302 to an internal address).
+    const MAX_REDIRECTS = 5;
+    let currentUrl = targetUrl;
     let parsed;
-    try {
-      parsed = new URL(targetUrl);
-    } catch {
-      return json({ error: 'Invalid url' }, 400);
-    }
+    let response;
 
     try {
-      // Pin to the first IPv4 address validated by isSafeUrl() so the actual
-      // TCP connection goes to the same IP we checked, closing the TOCTOU
-      // DNS-rebinding window.
-      const pinnedV4 = safety.resolvedAddresses?.find(a => a.includes('.'));
-      const response = await fetchWithTimeout(targetUrl, {
-        headers: { 'User-Agent': CHROME_UA, 'Accept': '*/*' },
-        ...(pinnedV4 ? { resolvedAddress: pinnedV4 } : {}),
-      }, 12000);
+      for (let hop = 0; ; hop += 1) {
+        const safety = await isSafeUrl(currentUrl);
+        if (!safety.safe) {
+          context.logger.warn(`[local-api] sports-stream-proxy SSRF blocked: ${safety.reason} (url=${redactUrlForLog(currentUrl)})`);
+          return json({ error: safety.reason }, 403);
+        }
+        try {
+          parsed = new URL(currentUrl);
+        } catch {
+          return json({ error: 'Invalid url' }, 400);
+        }
+
+        // Pin to the first IPv4 address validated by isSafeUrl() so the
+        // actual TCP connection goes to the same IP we checked, closing the
+        // TOCTOU DNS-rebinding window.
+        const pinnedV4 = safety.resolvedAddresses?.find(a => a.includes('.'));
+        response = await fetchWithTimeout(currentUrl, {
+          headers: { 'User-Agent': CHROME_UA, 'Accept': '*/*' },
+          ...(pinnedV4 ? { resolvedAddress: pinnedV4 } : {}),
+        }, 12000);
+
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers?.get?.('location');
+          if (location) {
+            if (hop >= MAX_REDIRECTS) {
+              return json({ error: 'Too many redirects' }, 502);
+            }
+            currentUrl = new URL(location, currentUrl).toString();
+            continue;
+          }
+        }
+        break;
+      }
 
       if (response.status < 200 || response.status >= 300) {
         return json({ error: `Upstream ${response.status}` }, response.status);
@@ -1694,7 +1718,7 @@ async function dispatch(requestUrl, req, routes, context) {
       });
     } catch (e) {
       const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
-      context.logger.warn(`[local-api] sports-stream-proxy error: ${e.message} (url=${redactUrlForLog(targetUrl)})`);
+      context.logger.warn(`[local-api] sports-stream-proxy error: ${e.message} (url=${redactUrlForLog(currentUrl)})`);
       return json({ error: isTimeout ? 'Stream timeout' : 'Failed to fetch stream' }, isTimeout ? 504 : 502);
     }
   }
