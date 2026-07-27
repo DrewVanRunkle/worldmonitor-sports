@@ -639,7 +639,7 @@ export class App {
     let panelSettings: Record<string, PanelConfig>;
 
     // Panels that must survive variant switches: desktop config, user-created widgets, MCP panels.
-    const isDynamicPanel = (k: string) => !ALL_PANELS[k] && (k === 'runtime-config' || k.startsWith('cw-') || k.startsWith('mcp-'));
+    const isDynamicPanel = (k: string) => !ALL_PANELS[k] && (k === 'runtime-config' || k.startsWith('cw-') || k.startsWith('mcp-') || k.startsWith('sports-streams-'));
 
     const currentVariant = SITE_VARIANT;
     let storedVariant: string | null = null;

@@ -57,9 +57,15 @@ export class SportsStreamsPanel extends Panel {
   private playerEl: HTMLElement;
   private listEl: HTMLElement;
   private hlsInstance: import('hls.js').default | null = null;
+  private collapsedGroups = new Set<string>();
 
-  constructor() {
-    super({ id: 'sports-streams', title: 'My Live Streams', showCount: false, collapsible: true });
+  // id/title are optional so this stays a drop-in `new SportsStreamsPanel()`
+  // for the statically-registered base panel; extra multiscreen instances
+  // (see src/services/sports-streams-instances.ts) pass their own generated
+  // id and title. All instances read/write the same shared stream list —
+  // only which stream is currently playing differs per instance.
+  constructor(id = 'sports-streams', title = 'My Live Streams') {
+    super({ id, title, showCount: false, collapsible: true });
 
     this.titleInput = h('input', { type: 'text', placeholder: 'Title (optional)', style: `${INPUT_STYLE};flex:1` }) as HTMLInputElement;
     this.urlInput = h('input', { type: 'text', placeholder: 'Stream URL (YouTube / .m3u8 / embed link)', style: `${INPUT_STYLE};flex:2` }) as HTMLInputElement;
@@ -75,6 +81,13 @@ export class SportsStreamsPanel extends Panel {
     this.m3uUrlInput = h('input', { type: 'text', placeholder: 'Playlist URL (best-effort — often blocked by CORS)', style: `${INPUT_STYLE};flex:1` }) as HTMLInputElement;
     const importUrlBtn = h('button', { type: 'button', style: BTN_STYLE, onClick: () => void this.handleImportUrl() }, 'Load from URL');
 
+    const addPanelBtn = h('button', {
+      type: 'button',
+      style: BTN_STYLE,
+      title: 'Add another Live Streams panel so you can watch multiple channels at once',
+      onClick: () => this.element.dispatchEvent(new CustomEvent('wm:sports-streams-add', { bubbles: true })),
+    }, '+ Multiscreen panel');
+
     this.statusEl = h('div', { style: 'font-size:10px;color:var(--text-dim);min-height:14px;padding:2px 0' });
 
     this.playerEl = h('div', { className: 'sports-stream-player' });
@@ -86,6 +99,7 @@ export class SportsStreamsPanel extends Panel {
       this.m3uTextarea,
       h('div', { style: 'display:flex;gap:6px' }, importTextBtn),
       h('div', { style: 'display:flex;gap:6px' }, this.m3uUrlInput, importUrlBtn),
+      h('div', { style: 'display:flex;gap:6px' }, addPanelBtn),
       this.statusEl,
     );
 
@@ -165,6 +179,13 @@ export class SportsStreamsPanel extends Panel {
     if (removeId) {
       removeStream(removeId);
       this.renderList();
+      return;
+    }
+    const groupToggle = target.closest<HTMLElement>('[data-stream-group-toggle]')?.dataset.streamGroupToggle;
+    if (groupToggle) {
+      if (this.collapsedGroups.has(groupToggle)) this.collapsedGroups.delete(groupToggle);
+      else this.collapsedGroups.add(groupToggle);
+      this.renderList();
     }
   }
 
@@ -186,15 +207,21 @@ export class SportsStreamsPanel extends Panel {
       groups.set(g, list);
     }
 
-    const html = Array.from(groups.entries()).map(([group, entries]) => `
+    const html = Array.from(groups.entries()).map(([group, entries]) => {
+      const collapsed = this.collapsedGroups.has(group);
+      return `
       <div style="margin-bottom:8px">
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;padding:4px 8px">${escapeHtml(group)}</div>
-        ${entries.map(entry => `
+        <button type="button" data-stream-group-toggle="${escapeHtml(group)}" aria-expanded="${!collapsed}" style="display:flex;align-items:center;gap:5px;width:100%;background:none;border:none;cursor:pointer;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;padding:4px 8px;text-align:left">
+          <span style="display:inline-block;font-size:9px;transition:transform 0.15s;transform:rotate(${collapsed ? '-90deg' : '0deg'})">▾</span>
+          <span>${escapeHtml(group)} (${entries.length})</span>
+        </button>
+        ${collapsed ? '' : entries.map(entry => `
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.04)">
             <button type="button" data-stream-play="${escapeHtml(entry.id)}" style="background:none;border:none;color:var(--text);cursor:pointer;text-align:left;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0;font-size:12px">▶ ${escapeHtml(entry.title)}</button>
             <button type="button" data-stream-remove="${escapeHtml(entry.id)}" aria-label="Remove" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:11px;padding:0 4px">✕</button>
           </div>`).join('')}
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     setTrustedHtml(this.listEl, trustedHtml(html, 'sports streams panel — escaped title/group text'));
   }
