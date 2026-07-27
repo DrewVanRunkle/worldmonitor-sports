@@ -23,19 +23,40 @@ export interface SportsScoreboard {
   games: SportsGame[];
 }
 
+export type LeagueKey = 'nfl' | 'nba' | 'mlb' | 'nhl' | 'epl' | 'mls';
+
 interface LeagueDef {
+  key: LeagueKey;
   slug: string;
   label: string;
+  /** Approximate 1-indexed [startMonth, endMonth] season window. Wraps the
+   *  year boundary when startMonth > endMonth (e.g. NFL: Aug–Feb). Used to
+   *  skip fetching/showing a league entirely outside its usual season —
+   *  ESPN still returns off-season noise (summer league, preseason
+   *  friendlies) that isn't worth a live-scores slot. */
+  seasonMonths: [number, number];
 }
 
-const LEAGUES: LeagueDef[] = [
-  { slug: 'football/nfl', label: 'NFL' },
-  { slug: 'basketball/nba', label: 'NBA' },
-  { slug: 'baseball/mlb', label: 'MLB' },
-  { slug: 'hockey/nhl', label: 'NHL' },
-  { slug: 'soccer/eng.1', label: 'Premier League' },
-  { slug: 'soccer/usa.1', label: 'MLS' },
+export const LEAGUES: LeagueDef[] = [
+  { key: 'nfl', slug: 'football/nfl', label: 'NFL', seasonMonths: [8, 2] },
+  { key: 'nba', slug: 'basketball/nba', label: 'NBA', seasonMonths: [10, 6] },
+  { key: 'mlb', slug: 'baseball/mlb', label: 'MLB', seasonMonths: [3, 11] },
+  { key: 'nhl', slug: 'hockey/nhl', label: 'NHL', seasonMonths: [10, 6] },
+  { key: 'epl', slug: 'soccer/eng.1', label: 'Premier League', seasonMonths: [8, 5] },
+  { key: 'mls', slug: 'soccer/usa.1', label: 'MLS', seasonMonths: [2, 12] },
 ];
+
+function getLeagueDef(key: LeagueKey): LeagueDef {
+  const def = LEAGUES.find(l => l.key === key);
+  if (!def) throw new Error(`Unknown league key: ${key}`);
+  return def;
+}
+
+export function isLeagueInSeason(key: LeagueKey, date: Date = new Date()): boolean {
+  const [start, end] = getLeagueDef(key).seasonMonths;
+  const month = date.getMonth() + 1;
+  return start <= end ? (month >= start && month <= end) : (month >= start || month <= end);
+}
 
 interface EspnCompetitor {
   homeAway: 'home' | 'away';
@@ -99,9 +120,20 @@ async function fetchLeagueScoreboard(def: LeagueDef, signal: AbortSignal, date?:
   return games;
 }
 
+/** Fetch scores for a single league. Returns [] without a network call when
+ *  the viewed date falls outside that league's usual season window. */
+export async function fetchSingleLeagueScores(key: LeagueKey, signal: AbortSignal, date?: Date): Promise<SportsGame[]> {
+  const def = getLeagueDef(key);
+  if (!isLeagueInSeason(key, date ?? new Date())) return [];
+  return fetchLeagueScoreboard(def, signal, date);
+}
+
+/** Aggregate scores across all leagues, skipping any that are out of season
+ *  for the viewed date. Used by the venue map and AI insights panels. */
 export async function fetchAllSportsScores(signal: AbortSignal, date?: Date): Promise<SportsScoreboard[]> {
+  const inSeasonLeagues = LEAGUES.filter(def => isLeagueInSeason(def.key, date ?? new Date()));
   const results = await Promise.allSettled(
-    LEAGUES.map(async def => ({ label: def.label, games: await fetchLeagueScoreboard(def, signal, date) })),
+    inSeasonLeagues.map(async def => ({ label: def.label, games: await fetchLeagueScoreboard(def, signal, date) })),
   );
   const boards: SportsScoreboard[] = [];
   for (const result of results) {

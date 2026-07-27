@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
-import { fetchAllSportsScores, type SportsGame, type SportsScoreboard } from '@/services/sports-scores';
+import { fetchSingleLeagueScores, isLeagueInSeason, type LeagueKey, type SportsGame } from '@/services/sports-scores';
 
 const REFRESH_MS = 60_000;
 
@@ -27,14 +27,6 @@ function renderGame(game: SportsGame): string {
     </div>`;
 }
 
-function renderBoard(board: SportsScoreboard): string {
-  return `
-    <div style="margin-bottom:10px">
-      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;padding:4px 8px">${escapeHtml(board.leagueLabel)}</div>
-      ${board.games.map(renderGame).join('')}
-    </div>`;
-}
-
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
@@ -54,12 +46,17 @@ function renderDateNav(selectedDate: Date): string {
     </div>`;
 }
 
-export class SportsScoresPanel extends Panel {
+/** Shared base for the per-league score panels below — same pattern as
+ *  MarketPanel.ts's multiple exported panel classes from one file, so
+ *  vite.config.ts's PANEL_CLUSTER only needs a single "SportsLeague" entry. */
+abstract class SportsLeaguePanel extends Panel {
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private selectedDate: Date = startOfDay(new Date());
+  private readonly leagueKey: LeagueKey;
 
-  constructor() {
-    super({ id: 'sports-scores', title: 'Sports Scores', showCount: false, collapsible: true });
+  constructor(id: string, title: string, leagueKey: LeagueKey) {
+    super({ id, title, showCount: false, collapsible: true });
+    this.leagueKey = leagueKey;
     this.content.addEventListener('click', (e) => {
       const target = (e.target as HTMLElement).closest<HTMLElement>('[data-sports-nav]');
       if (!target) return;
@@ -88,17 +85,26 @@ export class SportsScoresPanel extends Panel {
 
   public async fetchData(): Promise<boolean> {
     try {
-      const boards = await fetchAllSportsScores(this.signal, this.selectedDate);
       const nav = renderDateNav(this.selectedDate);
-      if (boards.length === 0) {
+
+      if (!isLeagueInSeason(this.leagueKey, this.selectedDate)) {
         this.setSafeContent(unsafeRawHtml(
-          `${nav}<div style="text-align:center;padding:12px;font-size:12px;color:var(--text-dim)">No games on this day</div>`,
-          'sports scores panel — empty state',
+          `${nav}<div style="text-align:center;padding:12px;font-size:12px;color:var(--text-dim)">Off-season</div>`,
+          'sports league panel — off-season state',
         ));
         return true;
       }
-      const html = nav + boards.map(renderBoard).join('');
-      this.setSafeContent(unsafeRawHtml(html, 'sports scores panel — trusted static markup, escaped team/score fields'));
+
+      const games = await fetchSingleLeagueScores(this.leagueKey, this.signal, this.selectedDate);
+      if (games.length === 0) {
+        this.setSafeContent(unsafeRawHtml(
+          `${nav}<div style="text-align:center;padding:12px;font-size:12px;color:var(--text-dim)">No games on this day</div>`,
+          'sports league panel — empty state',
+        ));
+        return true;
+      }
+      const html = nav + games.map(renderGame).join('');
+      this.setSafeContent(unsafeRawHtml(html, 'sports league panel — trusted static markup, escaped team/score fields'));
       return true;
     } catch (e) {
       if (this.isAbortError(e)) return false;
@@ -114,4 +120,28 @@ export class SportsScoresPanel extends Panel {
     }
     super.destroy();
   }
+}
+
+export class NflScoresPanel extends SportsLeaguePanel {
+  constructor() { super('sports-nfl', 'NFL Scores', 'nfl'); }
+}
+
+export class NbaScoresPanel extends SportsLeaguePanel {
+  constructor() { super('sports-nba', 'NBA Scores', 'nba'); }
+}
+
+export class MlbScoresPanel extends SportsLeaguePanel {
+  constructor() { super('sports-mlb', 'MLB Scores', 'mlb'); }
+}
+
+export class NhlScoresPanel extends SportsLeaguePanel {
+  constructor() { super('sports-nhl', 'NHL Scores', 'nhl'); }
+}
+
+export class PremierLeagueScoresPanel extends SportsLeaguePanel {
+  constructor() { super('sports-epl', 'Premier League Scores', 'epl'); }
+}
+
+export class MlsScoresPanel extends SportsLeaguePanel {
+  constructor() { super('sports-mls', 'MLS Scores', 'mls'); }
 }
