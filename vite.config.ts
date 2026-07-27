@@ -161,7 +161,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   RuntimeConfig: 'panels-risk', SatelliteFires: 'panels-risk',
   SecurityAdvisories: 'panels-risk', ServiceStatus: 'panels-risk',
   SocialVelocity: 'panels-risk', SpeciesComeback: 'panels-risk',
-  SportsScores: 'panels-risk', SportsMap: 'panels-risk',
+  SportsLeague: 'panels-risk', SportsMap: 'panels-risk',
   SportsStreams: 'panels-risk', SportsInsights: 'panels-risk',
   TechEvents: 'panels-risk',
   ThreatTimeline: 'panels-risk',

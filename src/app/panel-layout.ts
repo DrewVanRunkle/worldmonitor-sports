@@ -2294,7 +2294,12 @@ export class PanelLayoutManager implements AppModule {
 
     // Personal-use Sports category, gated by VITE_ENABLE_SPORTS (see panels.ts).
     // shouldCreatePanel only returns true when the flag was on at build time.
-    this.lazyDefaultPanel('sports-scores', () => import('@/components/SportsScoresPanel'), 'SportsScoresPanel');
+    this.lazyDefaultPanel('sports-nfl', () => import('@/components/SportsLeaguePanel'), 'NflScoresPanel');
+    this.lazyDefaultPanel('sports-nba', () => import('@/components/SportsLeaguePanel'), 'NbaScoresPanel');
+    this.lazyDefaultPanel('sports-mlb', () => import('@/components/SportsLeaguePanel'), 'MlbScoresPanel');
+    this.lazyDefaultPanel('sports-nhl', () => import('@/components/SportsLeaguePanel'), 'NhlScoresPanel');
+    this.lazyDefaultPanel('sports-epl', () => import('@/components/SportsLeaguePanel'), 'PremierLeagueScoresPanel');
+    this.lazyDefaultPanel('sports-mls', () => import('@/components/SportsLeaguePanel'), 'MlsScoresPanel');
     this.lazyDefaultPanel('sports-map', () => import('@/components/SportsMapPanel'), 'SportsMapPanel');
     this.lazyDefaultPanel('sports-streams', () => import('@/components/SportsStreamsPanel'), 'SportsStreamsPanel');
     this.lazyDefaultPanel('sports-insights', () => import('@/components/SportsInsightsPanel'), 'SportsInsightsPanel');
