@@ -37,6 +37,17 @@ function toHlsPlaybackUrl(url: string): string {
   return /\.ts(\?|$)/i.test(url) ? url.replace(/\.ts(\?|$)/i, '.m3u8$1') : url;
 }
 
+// Route through the local sidecar's SSRF-guarded proxy (src-tauri/sidecar/
+// local-api-server.mjs, /api/sports-stream-proxy) instead of fetching the
+// IPTV origin directly from the browser. These panels are built for VLC/Kodi
+// and virtually never send CORS headers, so hls.js's fetch-based loading
+// (used by every browser except Safari) gets CORB/CORS-blocked outright
+// against the raw origin — same-origin via the proxy sidesteps that, and
+// as a bonus upgrades http:-only providers to https: to avoid mixed content.
+function toStreamProxyUrl(url: string): string {
+  return `/api/sports-stream-proxy?url=${encodeURIComponent(url)}`;
+}
+
 export class SportsStreamsPanel extends Panel {
   private titleInput: HTMLInputElement;
   private urlInput: HTMLInputElement;
@@ -235,7 +246,8 @@ export class SportsStreamsPanel extends Panel {
   }
 
   private async playHls(stream: SportsStreamEntry): Promise<void> {
-    const playbackUrl = toHlsPlaybackUrl(stream.url);
+    const swappedUrl = toHlsPlaybackUrl(stream.url);
+    const playbackUrl = toStreamProxyUrl(swappedUrl);
     const video = document.createElement('video');
     video.controls = true;
     video.autoplay = true;
@@ -249,9 +261,9 @@ export class SportsStreamsPanel extends Panel {
       // panels, not guaranteed for every provider) — if it was wrong, retry
       // the original URL once before giving up visibly instead of silently.
       video.onerror = () => {
-        if (playbackUrl !== stream.url) {
+        if (swappedUrl !== stream.url) {
           video.onerror = null;
-          video.src = stream.url;
+          video.src = toStreamProxyUrl(stream.url);
         } else {
           this.renderPlayerMessage('Failed to load this stream.');
         }
@@ -267,12 +279,12 @@ export class SportsStreamsPanel extends Panel {
       }
       const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
       this.hlsInstance = hls;
-      let triedOriginal = playbackUrl === stream.url;
+      let triedOriginal = swappedUrl === stream.url;
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (!data.fatal) return;
         if (!triedOriginal) {
           triedOriginal = true;
-          hls.loadSource(stream.url);
+          hls.loadSource(toStreamProxyUrl(stream.url));
           return;
         }
         this.renderPlayerMessage('Failed to load this stream.');

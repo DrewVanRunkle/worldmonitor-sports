@@ -2196,6 +2196,79 @@ test('rss-proxy blocks URLs with credentials (SSRF protection)', async () => {
   }
 });
 
+test('sports-stream-proxy blocks requests to localhost and private IP ranges (SSRF protection)', async () => {
+  const localApi = await setupApiDir({});
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const localhost = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy?url=http://127.0.0.1:3000/live.m3u8`);
+    assert.equal(localhost.status, 403);
+
+    const privateA = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy?url=http://192.168.1.1/live.m3u8`);
+    assert.equal(privateA.status, 403);
+
+    const privateB = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy?url=http://10.0.0.1/live.m3u8`);
+    assert.equal(privateB.status, 403);
+
+    const metadata = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy?url=http://169.254.169.254/latest/meta-data/`);
+    assert.equal(metadata.status, 403);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('sports-stream-proxy blocks non-http protocols and URLs with credentials (SSRF protection)', async () => {
+  const localApi = await setupApiDir({});
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const fileProtocol = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy?url=file:///etc/passwd`);
+    assert.equal(fileProtocol.status, 403);
+    const fileBody = await fileProtocol.json();
+    assert.ok(fileBody.error.includes('http'));
+
+    const withCreds = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy?url=http://user:pass@example.com/live.m3u8`);
+    assert.equal(withCreds.status, 403);
+    const credsBody = await withCreds.json();
+    assert.ok(credsBody.error.includes('credentials'));
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('sports-stream-proxy requires the url parameter', async () => {
+  const localApi = await setupApiDir({});
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy`);
+    assert.equal(response.status, 400);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('traffic log strips query strings from entries to protect privacy', async () => {
   const localApi = await setupApiDir({
     'test-endpoint.js': `
