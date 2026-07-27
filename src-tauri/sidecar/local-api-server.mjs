@@ -1754,14 +1754,24 @@ async function dispatch(requestUrl, req, routes, context) {
       }
 
       // Unlike the manifest (which must always be re-polled for live
-      // updates), a given segment URL's bytes never change once published —
-      // sliding-window live manifests routinely re-list a segment from the
-      // previous poll, and without caching the browser re-fetches (and this
-      // proxy re-requests from the panel) content it already has.
+      // updates), a given *media segment* URL's bytes never change once
+      // published — sliding-window live manifests routinely re-list a
+      // segment from the previous poll, and without caching the browser
+      // re-fetches (and this proxy re-requests from the panel) content it
+      // already has. That reasoning only holds because segment URLs carry a
+      // unique per-fetch token — it does NOT hold for other content proxied
+      // through this same route (e.g. the Xtream player_api.php JSON used to
+      // list channels for import, xtream-codes.ts): that URL is stable and
+      // repeatable, and the channel list underneath it can change, so a long
+      // cache would silently hide newly-added channels on re-fetch.
+      const looksLikeMediaSegment = contentType.includes('video/') || contentType.includes('mp2t') || parsed.pathname.toLowerCase().endsWith('.ts');
       const body = Buffer.from(await response.arrayBuffer());
       return new Response(body, {
         status: 200,
-        headers: { 'content-type': contentType || 'application/octet-stream', 'cache-control': 'public, max-age=86400, immutable' },
+        headers: {
+          'content-type': contentType || 'application/octet-stream',
+          'cache-control': looksLikeMediaSegment ? 'public, max-age=86400, immutable' : 'no-cache',
+        },
       });
     } catch (e) {
       const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
