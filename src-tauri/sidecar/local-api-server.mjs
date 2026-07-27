@@ -1651,10 +1651,16 @@ async function dispatch(requestUrl, req, routes, context) {
     let currentUrl = targetUrl;
     // Browsers send a Referer (origin-only, per the strict-origin-when-cross-
     // origin default policy) on the follow-up request when a redirect
-    // crosses origins. A raw https.request sends none unless we set it
-    // ourselves, and CDN edges commonly reject referrer-less requests —
-    // masked as 404 rather than 403, same as the User-Agent check.
-    let previousOrigin = null;
+    // crosses origins, and CDN edges commonly reject referrer-less requests —
+    // masked as 404 rather than 403, same as a User-Agent check. That covers
+    // redirects *within* one proxied fetch, but manifest rewriting resolves
+    // segment URIs against the already-redirected CDN origin (e.g. a bare
+    // IP), so each segment fetch arrives as its own fresh top-level request
+    // with no memory of the panel origin that issued the token. Carry it
+    // forward explicitly via a `ref` param instead of re-deriving it, since
+    // by the time a segment request lands here the panel origin is gone.
+    const refParam = requestUrl.searchParams.get('ref');
+    let previousOrigin = refParam || null;
     let parsed;
     let response;
 
@@ -1670,6 +1676,10 @@ async function dispatch(requestUrl, req, routes, context) {
         } catch {
           return json({ error: 'Invalid url' }, 400);
         }
+        // First hop with no explicit ref: this is the original request the
+        // frontend made (top-level manifest fetch), so its own origin *is*
+        // the panel origin — use it for any redirects this hop takes.
+        if (hop === 0 && !previousOrigin) previousOrigin = parsed.origin;
 
         // Pin to the first IPv4 address validated by isSafeUrl() so the
         // actual TCP connection goes to the same IP we checked, closing the
@@ -1690,7 +1700,6 @@ async function dispatch(requestUrl, req, routes, context) {
             if (hop >= MAX_REDIRECTS) {
               return json({ error: 'Too many redirects' }, 502);
             }
-            previousOrigin = parsed.origin;
             currentUrl = new URL(location, currentUrl).toString();
             continue;
           }
@@ -1711,7 +1720,12 @@ async function dispatch(requestUrl, req, routes, context) {
         const baseOrigin = parsed.origin;
         const toProxyUrl = (uri) => {
           const full = uri.startsWith('http') ? uri : `${baseOrigin}${basePath}${uri}`;
-          return `/api/sports-stream-proxy?url=${encodeURIComponent(full)}`;
+          // Carry the panel origin forward so each segment/sub-playlist
+          // fetch — a fresh top-level request with no memory of how the
+          // manifest itself got redirected here — still sends the Referer
+          // the CDN expects.
+          const ref = previousOrigin ? `&ref=${encodeURIComponent(previousOrigin)}` : '';
+          return `/api/sports-stream-proxy?url=${encodeURIComponent(full)}${ref}`;
         };
         let manifest = await response.text();
         manifest = manifest.replace(/^(?!#)(\S+)/gm, (match) => toProxyUrl(match));
