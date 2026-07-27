@@ -4,6 +4,12 @@ import { escapeHtml } from '@/utils/sanitize';
 import { parseM3u } from '@/utils/m3u-parser';
 import { addStream, addStreams, detectKind, loadStreams, removeStream, type SportsStreamEntry } from '@/services/sports-stream-store';
 
+// Above this many channels, rendering every row expanded at once (full
+// innerHTML rebuild on every click) gets noticeably sluggish — default all
+// groups collapsed on first render instead so the initial paint only builds
+// group headers; the user expands groups they actually want to browse.
+const AUTO_COLLAPSE_THRESHOLD = 150;
+
 const BTN_STYLE = 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:var(--text);cursor:pointer;font-size:11px;padding:4px 10px;white-space:nowrap';
 const INPUT_STYLE = 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text);font-size:11px;padding:5px 8px;min-width:0';
 
@@ -58,6 +64,7 @@ export class SportsStreamsPanel extends Panel {
   private listEl: HTMLElement;
   private hlsInstance: import('hls.js').default | null = null;
   private collapsedGroups = new Set<string>();
+  private hasAutoCollapsed = false;
 
   // id/title are optional so this stays a drop-in `new SportsStreamsPanel()`
   // for the statically-registered base panel; extra multiscreen instances
@@ -135,11 +142,18 @@ export class SportsStreamsPanel extends Panel {
       this.setStatus('No channels found in pasted text');
       return;
     }
-    const added = addStreams(entries);
-    const skipped = entries.length - added;
+    const result = addStreams(entries);
     this.m3uTextarea.value = '';
-    this.setStatus(`Imported ${added} channel${added === 1 ? '' : 's'}${skipped > 0 ? ` (${skipped} duplicate${skipped === 1 ? '' : 's'} skipped)` : ''}`);
+    this.setStatus(this.formatImportStatus(result));
     this.renderList();
+  }
+
+  private formatImportStatus(result: { added: number; duplicates: number; droppedForCap: number }): string {
+    const { added, duplicates, droppedForCap } = result;
+    const parts = [`Imported ${added} channel${added === 1 ? '' : 's'}`];
+    if (duplicates > 0) parts.push(`${duplicates} duplicate${duplicates === 1 ? '' : 's'} skipped`);
+    if (droppedForCap > 0) parts.push(`${droppedForCap} oldest channel${droppedForCap === 1 ? '' : 's'} dropped to stay under the library limit`);
+    return parts.length === 1 ? parts[0]! : `${parts[0]} (${parts.slice(1).join(', ')})`;
   }
 
   private async handleImportUrl(): Promise<void> {
@@ -158,9 +172,9 @@ export class SportsStreamsPanel extends Panel {
         this.setStatus('No channels found at that URL');
         return;
       }
-      const added = addStreams(entries);
+      const result = addStreams(entries);
       this.m3uUrlInput.value = '';
-      this.setStatus(`Imported ${added} channel${added === 1 ? '' : 's'} from URL`);
+      this.setStatus(this.formatImportStatus(result));
       this.renderList();
     } catch (e) {
       if (this.isAbortError(e)) return;
@@ -205,6 +219,17 @@ export class SportsStreamsPanel extends Panel {
       const list = groups.get(g) ?? [];
       list.push(s);
       groups.set(g, list);
+    }
+
+    // One-time default for large libraries: collapse everything so the first
+    // paint only builds group headers, not thousands of channel rows. Only
+    // applies once, before the user has touched any group — after that their
+    // manual collapse/expand choices are left alone on every re-render.
+    if (!this.hasAutoCollapsed) {
+      this.hasAutoCollapsed = true;
+      if (streams.length > AUTO_COLLAPSE_THRESHOLD) {
+        for (const group of groups.keys()) this.collapsedGroups.add(group);
+      }
     }
 
     const html = Array.from(groups.entries()).map(([group, entries]) => {

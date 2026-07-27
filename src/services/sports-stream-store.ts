@@ -5,7 +5,12 @@
 import { generateId, loadFromStorage, saveToStorage } from '@/utils';
 
 const STORAGE_KEY = 'wm-sports-streams';
-const MAX_STREAMS = 200;
+// Full IPTV packages routinely ship 1000+ channels. At the JSON size of a
+// typical entry (title/url/group, url often carrying a long signed token)
+// 5000 entries lands around 2-3MB — comfortable headroom under the ~5-10MB
+// per-origin localStorage quota most browsers give, alongside everything
+// else this app already stores there.
+const MAX_STREAMS = 5000;
 const MAX_TITLE_CHARS = 100;
 const MAX_URL_CHARS = 2000;
 
@@ -58,23 +63,35 @@ export function addStream(title: string, url: string, group?: string): SportsStr
   return entry;
 }
 
-/** Bulk-add from a parsed M3U playlist. Dedupes by URL against existing entries and within the batch. Returns the number actually added. */
-export function addStreams(candidates: Array<{ title: string; url: string; group?: string }>): number {
+export interface AddStreamsResult {
+  /** New, non-duplicate candidates found in this batch (before any cap eviction). */
+  added: number;
+  /** Candidates skipped because their URL already exists (existing entries or earlier in this same batch). */
+  duplicates: number;
+  /** Entries (old or new) evicted from the combined list to stay at MAX_STREAMS. 0 unless the cap was actually hit. */
+  droppedForCap: number;
+}
+
+/** Bulk-add from a parsed M3U playlist. Dedupes by URL against existing entries and within the batch. */
+export function addStreams(candidates: Array<{ title: string; url: string; group?: string }>): AddStreamsResult {
   const existing = loadStreams();
   const seenUrls = new Set(existing.map(s => s.url));
   const toAdd: SportsStreamEntry[] = [];
+  let duplicates = 0;
 
   for (const candidate of candidates) {
     const entry = buildEntry(candidate.title, candidate.url, candidate.group);
-    if (!entry || seenUrls.has(entry.url)) continue;
+    if (!entry) continue;
+    if (seenUrls.has(entry.url)) { duplicates++; continue; }
     seenUrls.add(entry.url);
     toAdd.push(entry);
   }
 
-  if (toAdd.length === 0) return 0;
-  const updated = [...existing, ...toAdd].slice(-MAX_STREAMS);
+  if (toAdd.length === 0) return { added: 0, duplicates, droppedForCap: 0 };
+  const combined = [...existing, ...toAdd];
+  const updated = combined.slice(-MAX_STREAMS);
   saveToStorage(STORAGE_KEY, updated);
-  return toAdd.length;
+  return { added: toAdd.length, duplicates, droppedForCap: combined.length - updated.length };
 }
 
 export function removeStream(id: string): void {
