@@ -162,7 +162,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   SecurityAdvisories: 'panels-risk', ServiceStatus: 'panels-risk',
   SocialVelocity: 'panels-risk', SpeciesComeback: 'panels-risk',
   SportsScores: 'panels-risk', SportsMap: 'panels-risk',
-  SportsStreams: 'panels-risk',
+  SportsStreams: 'panels-risk', SportsInsights: 'panels-risk',
   TechEvents: 'panels-risk',
   ThreatTimeline: 'panels-risk',
   TechHubs: 'panels-risk', TechReadiness: 'panels-risk',
