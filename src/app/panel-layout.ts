@@ -2297,6 +2297,7 @@ export class PanelLayoutManager implements AppModule {
     this.lazyDefaultPanel('sports-scores', () => import('@/components/SportsScoresPanel'), 'SportsScoresPanel');
     this.lazyDefaultPanel('sports-map', () => import('@/components/SportsMapPanel'), 'SportsMapPanel');
     this.lazyDefaultPanel('sports-streams', () => import('@/components/SportsStreamsPanel'), 'SportsStreamsPanel');
+    this.lazyDefaultPanel('sports-insights', () => import('@/components/SportsInsightsPanel'), 'SportsInsightsPanel');
 
     // Happy variant panels (lazy-loaded — only relevant for happy variant)
     if (SITE_VARIANT === 'happy') {
