@@ -2296,6 +2296,7 @@ export class PanelLayoutManager implements AppModule {
     // shouldCreatePanel only returns true when the flag was on at build time.
     this.lazyDefaultPanel('sports-scores', () => import('@/components/SportsScoresPanel'), 'SportsScoresPanel');
     this.lazyDefaultPanel('sports-map', () => import('@/components/SportsMapPanel'), 'SportsMapPanel');
+    this.lazyDefaultPanel('sports-streams', () => import('@/components/SportsStreamsPanel'), 'SportsStreamsPanel');
 
     // Happy variant panels (lazy-loaded — only relevant for happy variant)
     if (SITE_VARIANT === 'happy') {
