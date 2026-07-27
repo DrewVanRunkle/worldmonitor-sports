@@ -1904,6 +1904,26 @@ export async function createLocalApiServer(options = {}) {
           );
         }
       }
+      // Docker self-host ONLY: OLLAMA_API_URL / LLM_API_URL may point at a
+      // private LAN host (e.g. a local Ollama or LM Studio instance on
+      // another box) — without trusting it the SSRF guard blocks every
+      // completion/health-probe call, and callLlm's provider-chain gate
+      // just silently skips it as "offline". Same containment as the Redis
+      // allowlist above: gated on mode === 'docker' so desktop/production
+      // startup never widens the SSRF boundary via env.
+      if (context.mode === 'docker') {
+        for (const envVar of ['OLLAMA_API_URL', 'LLM_API_URL']) {
+          const value = process.env[envVar];
+          if (!value) continue;
+          try {
+            extraAllowedPrivateOrigins.push(new URL(value).origin);
+          } catch (err) {
+            context.logger.warn(
+              `[local-api] ${envVar} is not a valid URL; not added to the private-fetch allowlist (LLM calls to it will be SSRF-blocked): ${err.message}`,
+            );
+          }
+        }
+      }
       if (context.allowPrivateRemoteBase) {
         try { extraAllowedPrivateOrigins.push(new URL(context.remoteBase).origin); } catch {}
       }

@@ -678,6 +678,108 @@ test('preserves Request body when handler uses fetch(Request)', async () => {
   }
 });
 
+test('docker mode allowlists LLM_API_URL for private-network fetch', async () => {
+  // Self-hosted Docker LLM providers (LM Studio, Ollama, etc.) are commonly
+  // reachable only via a private LAN IP. Without this allowlisting, the SSRF
+  // guard blocks every completion/health-probe call and callLlm's provider
+  // chain silently treats the provider as "offline" (#sports-insights).
+  const upstream = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const upstreamPort = await listen(upstream);
+  const upstreamOrigin = `http://127.0.0.1:${upstreamPort}`;
+  const originalLlmApiUrl = process.env.LLM_API_URL;
+  process.env.LLM_API_URL = `${upstreamOrigin}/v1/chat/completions`;
+
+  const localApi = await setupApiDir({
+    'llm-fetch.js': `
+      export default async function handler() {
+        const upstream = await fetch(process.env.LLM_API_URL);
+        return new Response(JSON.stringify({ status: upstream.status }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    mode: 'docker',
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/llm-fetch`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.status, 200);
+  } finally {
+    if (originalLlmApiUrl === undefined) delete process.env.LLM_API_URL;
+    else process.env.LLM_API_URL = originalLlmApiUrl;
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('non-docker mode still SSRF-blocks LLM_API_URL private-network fetch', async () => {
+  const upstream = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const upstreamPort = await listen(upstream);
+  const upstreamOrigin = `http://127.0.0.1:${upstreamPort}`;
+  const originalLlmApiUrl = process.env.LLM_API_URL;
+  process.env.LLM_API_URL = `${upstreamOrigin}/v1/chat/completions`;
+
+  const localApi = await setupApiDir({
+    'llm-fetch.js': `
+      export default async function handler() {
+        try {
+          await fetch(process.env.LLM_API_URL);
+          return new Response(JSON.stringify({ blocked: false }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ blocked: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/llm-fetch`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.blocked, true);
+  } finally {
+    if (originalLlmApiUrl === undefined) delete process.env.LLM_API_URL;
+    else process.env.LLM_API_URL = originalLlmApiUrl;
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
 test('returns local handler error when fetch(Request) uses a consumed body', async () => {
   let upstreamHits = 0;
   const upstream = createServer((_req, res) => {
