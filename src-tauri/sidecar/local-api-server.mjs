@@ -1736,10 +1736,15 @@ async function dispatch(requestUrl, req, routes, context) {
         });
       }
 
+      // Unlike the manifest (which must always be re-polled for live
+      // updates), a given segment URL's bytes never change once published —
+      // sliding-window live manifests routinely re-list a segment from the
+      // previous poll, and without caching the browser re-fetches (and this
+      // proxy re-requests from the panel) content it already has.
       const body = Buffer.from(await response.arrayBuffer());
       return new Response(body, {
         status: 200,
-        headers: { 'content-type': contentType || 'application/octet-stream', 'cache-control': 'no-cache' },
+        headers: { 'content-type': contentType || 'application/octet-stream', 'cache-control': 'public, max-age=86400, immutable' },
       });
     } catch (e) {
       const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
