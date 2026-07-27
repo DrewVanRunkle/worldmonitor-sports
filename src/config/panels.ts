@@ -16,10 +16,11 @@ const _desktop = isDesktopRuntime();
 // map-layer-definitions.ts and tests/browser-bundle-secret-guard (allowlist).
 const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
-// Personal-use widget, default OFF everywhere. Only exists in FULL_PANELS
-// (and therefore ALL_PANELS/VARIANT_DEFAULTS) when explicitly enabled via
-// local .env, so it never appears for other users/deployments.
-const SPORTS_SCORES_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS_SCORES === 'true';
+// Personal-use Sports category (scores/schedule, venue map, streams, AI
+// recap), default OFF everywhere. Panel keys only exist in FULL_PANELS (and
+// therefore ALL_PANELS/VARIANT_DEFAULTS) when explicitly enabled via local
+// .env, so they never appear for other users/deployments.
+const SPORTS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS === 'true';
 
 // ============================================
 // FULL VARIANT (Geopolitical)
@@ -132,7 +133,12 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'deduction': { name: 'Deduct Situation', enabled: false, priority: 1, premium: 'locked' as const },
   'geo-hubs': { name: 'Geopolitical Hubs', enabled: false, priority: 2 },
   'tech-hubs': { name: 'Hot Tech Hubs', enabled: false, priority: 2 },
-  ...(SPORTS_SCORES_ENABLED && { 'sports-scores': { name: 'Sports Scores', enabled: true, priority: 2 } }),
+  ...(SPORTS_ENABLED && {
+    'sports-scores': { name: 'Sports Scores', enabled: true, priority: 2 },
+    'sports-map': { name: 'Sports Venue Map', enabled: true, priority: 2 },
+    'sports-streams': { name: 'My Live Streams', enabled: true, priority: 2 },
+    'sports-insights': { name: 'AI Sports Insights', enabled: true, priority: 2 },
+  }),
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
@@ -1478,6 +1484,15 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
     labelKey: 'header.panelCatHappyPlanet',
     panelKeys: ['species', 'renewable', 'giving'],
     variants: ['happy'],
+  },
+
+  // Personal-use Sports category — only meaningfully shows once
+  // VITE_ENABLE_SPORTS is set (see SPORTS_ENABLED above), since none of
+  // these panel keys otherwise exist in the user's panel settings.
+  sports: {
+    labelKey: 'header.panelCatSports',
+    panelKeys: ['sports-scores', 'sports-map', 'sports-streams', 'sports-insights'],
+    variants: ['full'],
   },
 };
 
