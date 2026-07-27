@@ -1708,7 +1708,14 @@ async function dispatch(requestUrl, req, routes, context) {
       }
 
       if (response.status < 200 || response.status >= 300) {
-        return json({ error: `Upstream ${response.status}` }, response.status);
+        // Surface the upstream's own error body (truncated) instead of just
+        // the status — Xtream-style panels/CDNs often explain the real
+        // rejection reason (expired token, bad UA, connection limit) in the
+        // response text even on a 403/404.
+        let upstreamBody = '';
+        try { upstreamBody = (await response.text()).slice(0, 300); } catch { /* ignore */ }
+        context.logger.warn(`[local-api] sports-stream-proxy upstream ${response.status} (url=${redactUrlForLog(currentUrl)}): ${upstreamBody}`);
+        return json({ error: `Upstream ${response.status}`, upstreamBody }, response.status);
       }
 
       const contentType = response.headers?.get?.('content-type') || '';
@@ -1749,7 +1756,7 @@ async function dispatch(requestUrl, req, routes, context) {
     } catch (e) {
       const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
       context.logger.warn(`[local-api] sports-stream-proxy error: ${e.message} (url=${redactUrlForLog(currentUrl)})`);
-      return json({ error: isTimeout ? 'Stream timeout' : 'Failed to fetch stream' }, isTimeout ? 504 : 502);
+      return json({ error: isTimeout ? 'Stream timeout' : 'Failed to fetch stream', detail: e.message }, isTimeout ? 504 : 502);
     }
   }
 
