@@ -79,7 +79,13 @@ export async function fetchXtreamLiveChannels(
   ]);
 
   if (!categoriesRes.ok || !streamsRes.ok) {
-    throw new XtreamImportError(`Server responded with an error (HTTP ${!categoriesRes.ok ? categoriesRes.status : streamsRes.status})`);
+    const failed = !categoriesRes.ok ? categoriesRes : streamsRes;
+    // response.type is "basic"/"cors" for a genuine network round-trip and
+    // "default" (sometimes "opaqueredirect"/"error") for a Response object
+    // synthesized in JS — e.g. by a service worker fallback — without ever
+    // touching the network. Surfacing it turns "it says 503 but the server
+    // never logged anything" from a guessing game into a direct answer.
+    throw new XtreamImportError(`Server responded with an error (HTTP ${failed.status}, response.type="${failed.type}")`);
   }
 
   let categoriesJson: unknown;
