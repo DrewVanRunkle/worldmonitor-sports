@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { parseM3u } from '@/utils/m3u-parser';
-import { addStream, addStreams, detectKind, loadStreams, removeStream, type SportsStreamEntry } from '@/services/sports-stream-store';
+import { addStream, addStreams, clearStreams, detectKind, loadStreams, removeStream, type SportsStreamEntry } from '@/services/sports-stream-store';
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { fetchXtreamLiveChannels, normalizeXtreamBaseUrl, XtreamImportError, type XtreamCredentials } from '@/services/xtream-codes';
 
@@ -139,6 +139,13 @@ export class SportsStreamsPanel extends Panel {
       onClick: () => this.element.dispatchEvent(new CustomEvent('wm:sports-streams-add', { bubbles: true })),
     }, '+ Multiscreen panel');
 
+    const clearAllBtn = h('button', {
+      type: 'button',
+      style: BTN_STYLE,
+      title: 'Remove every imported channel so you can start over with a fresh playlist',
+      onClick: () => this.handleClearAll(),
+    }, 'Clear all channels');
+
     this.statusEl = h('div', { style: 'font-size:10px;color:var(--text-dim);min-height:14px;padding:2px 0' });
 
     this.playerEl = h('div', { className: 'sports-stream-player' });
@@ -151,7 +158,7 @@ export class SportsStreamsPanel extends Panel {
       h('div', { style: 'display:flex;gap:6px' }, importTextBtn),
       h('div', { style: 'display:flex;gap:6px' }, this.m3uUrlInput, importUrlBtn),
       h('div', { style: 'display:flex;gap:6px' }, this.xcUrlInput, this.xcUserInput, this.xcPassInput, xcFetchBtn),
-      h('div', { style: 'display:flex;gap:6px' }, addPanelBtn),
+      h('div', { style: 'display:flex;gap:6px' }, addPanelBtn, clearAllBtn),
       this.statusEl,
     );
 
@@ -173,6 +180,20 @@ export class SportsStreamsPanel extends Panel {
     this.titleInput.value = '';
     this.urlInput.value = '';
     this.setStatus('Added');
+    this.renderList();
+  }
+
+  private handleClearAll(): void {
+    const count = loadStreams().length;
+    if (count === 0) {
+      this.setStatus('No channels to clear');
+      return;
+    }
+    if (!window.confirm(`Remove all ${count} imported channel${count === 1 ? '' : 's'}? This can't be undone.`)) return;
+    clearStreams();
+    this.collapsedGroups.clear();
+    this.hasAutoCollapsed = false;
+    this.setStatus('Cleared all channels');
     this.renderList();
   }
 
