@@ -1637,7 +1637,32 @@ async function dispatch(requestUrl, req, routes, context) {
   // through this same proxy so segment fetches don't hit the origin directly
   // and re-fail CORS the same way the manifest did.
   if (requestUrl.pathname === '/api/sports-stream-proxy') {
-    const targetUrl = requestUrl.searchParams.get('url');
+    // POST body carries { url, ref? } as JSON instead of query params —
+    // used by the Xtream Codes import flow specifically, since that target
+    // URL contains literal "username="/"password=" query-parameter names
+    // (Xtream's own player_api.php contract, not something this app
+    // controls). A network-level security appliance (DPI/IDS, e.g. UniFi
+    // threat management) can flag "password=" appearing anywhere in a
+    // request URL — including nested/URL-encoded inside this proxy's own
+    // `url=` query param — as a credential-leak signature and block it
+    // before it ever reaches this server. Query-string GET stays the
+    // default for stream playback (manifests/segments), which never hits
+    // this pattern since Xtream embeds credentials as path segments there
+    // (/live/<user>/<pass>/<id>.m3u8), not as a named query parameter.
+    let targetUrl;
+    let bodyRefParam = null;
+    if (req.method === 'POST') {
+      const body = await readBody(req);
+      try {
+        const parsedBody = body ? JSON.parse(body.toString()) : {};
+        targetUrl = typeof parsedBody.url === 'string' ? parsedBody.url : null;
+        bodyRefParam = typeof parsedBody.ref === 'string' ? parsedBody.ref : null;
+      } catch {
+        return json({ error: 'Invalid JSON body' }, 400);
+      }
+    } else {
+      targetUrl = requestUrl.searchParams.get('url');
+    }
     if (!targetUrl) return json({ error: 'Missing url parameter' }, 400);
 
     // Xtream-Codes-style IPTV panels almost universally 302 the manifest/
@@ -1659,7 +1684,7 @@ async function dispatch(requestUrl, req, routes, context) {
     // with no memory of the panel origin that issued the token. Carry it
     // forward explicitly via a `ref` param instead of re-deriving it, since
     // by the time a segment request lands here the panel origin is gone.
-    const refParam = requestUrl.searchParams.get('ref');
+    const refParam = req.method === 'POST' ? bodyRefParam : requestUrl.searchParams.get('ref');
     let previousOrigin = refParam || null;
     let parsed;
     let response;

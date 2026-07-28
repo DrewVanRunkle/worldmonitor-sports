@@ -2269,6 +2269,46 @@ test('sports-stream-proxy requires the url parameter', async () => {
   }
 });
 
+test('sports-stream-proxy accepts POST with a JSON body and applies the same SSRF guard', async () => {
+  const localApi = await setupApiDir({});
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    // Missing url in the body
+    const missing = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(missing.status, 400);
+
+    // Malformed JSON body
+    const badJson = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'not json',
+    });
+    assert.equal(badJson.status, 400);
+
+    // SSRF guard applies identically to a POST-body target as to a query-string one
+    const privateTarget = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'http://192.168.1.1/player_api.php?username=u&password=p' }),
+    });
+    assert.equal(privateTarget.status, 403);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('traffic log strips query strings from entries to protect privacy', async () => {
   const localApi = await setupApiDir({
     'test-endpoint.js': `

@@ -68,6 +68,24 @@ function toStreamProxyUrl(url: string): string {
   return `/api/sports-stream-proxy?url=${encodeURIComponent(url)}`;
 }
 
+// Same proxy, POST variant — target URL travels in a JSON body instead of
+// the request's own query string. Xtream's player_api.php uses literal
+// "username="/"password=" query-parameter names, and some network-level
+// security appliances (DPI/IDS) flag "password=" appearing anywhere in a
+// request URL as a credential-leak signature and silently block it before
+// it reaches this server at all — even nested inside this proxy's own
+// url= query param. Stream playback doesn't need this: Xtream embeds
+// credentials as path segments there (/live/<user>/<pass>/<id>.m3u8), never
+// as a named query parameter, so it never hits that pattern.
+function fetchViaStreamProxy(url: string, signal: AbortSignal): Promise<Response> {
+  return fetch('/api/sports-stream-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+    signal,
+  });
+}
+
 export class SportsStreamsPanel extends Panel {
   private titleInput: HTMLInputElement;
   private urlInput: HTMLInputElement;
@@ -226,7 +244,7 @@ export class SportsStreamsPanel extends Panel {
     const creds = { baseUrl, username, password };
     try {
       const entries = await fetchXtreamLiveChannels(creds, (url) =>
-        fetch(toStreamProxyUrl(url), { signal: this.signal }),
+        fetchViaStreamProxy(url, this.signal),
       );
       if (entries.length === 0) {
         this.setStatus('Connected, but no live channels were returned');
