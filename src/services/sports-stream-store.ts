@@ -98,3 +98,8 @@ export function removeStream(id: string): void {
   const updated = loadStreams().filter(s => s.id !== id);
   saveToStorage(STORAGE_KEY, updated);
 }
+
+/** Wipes every stored stream. Shared across every multiscreen panel instance, same as loadStreams()/addStreams(). */
+export function clearStreams(): void {
+  saveToStorage(STORAGE_KEY, []);
+}
