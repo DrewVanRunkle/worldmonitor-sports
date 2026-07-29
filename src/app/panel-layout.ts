@@ -2316,6 +2316,9 @@ export class PanelLayoutManager implements AppModule {
     this.lazyDefaultPanel('sports-epl', () => import('@/components/SportsLeaguePanel'), 'PremierLeagueScoresPanel');
     this.lazyDefaultPanel('sports-mls', () => import('@/components/SportsLeaguePanel'), 'MlsScoresPanel');
     this.lazyDefaultPanel('sports-map', () => import('@/components/SportsMapPanel'), 'SportsMapPanel');
+    this.lazyDefaultPanel('sports-standings', () => import('@/components/SportsStandingsPanel'), 'SportsStandingsPanel');
+    this.lazyDefaultPanel('sports-schedule', () => import('@/components/SportsSchedulePanel'), 'SportsSchedulePanel');
+    this.lazyDefaultPanel('sports-news', () => import('@/components/SportsNewsPanel'), 'SportsNewsPanel');
     this.lazyDefaultPanel('sports-streams', () => import('@/components/SportsStreamsPanel'), 'SportsStreamsPanel');
     this.lazyDefaultPanel('sports-insights', () => import('@/components/SportsInsightsPanel'), 'SportsInsightsPanel');
 

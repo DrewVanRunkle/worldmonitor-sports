@@ -167,6 +167,9 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   ThreatTimeline: 'panels-risk',
   TechHubs: 'panels-risk', TechReadiness: 'panels-risk',
   WorldClock: 'panels-risk',
+  // Personal-use Sports category (VITE_ENABLE_SPORTS, see panels.ts)
+  SportsStandings: 'panels-risk',
+  SportsSchedule: 'panels-risk', SportsNews: 'panels-risk',
 };
 
 const PANEL_SUPPORT_CLUSTER: Record<string, PanelSupportChunkName> = {
