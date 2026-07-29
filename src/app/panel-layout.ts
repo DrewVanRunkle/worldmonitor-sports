@@ -65,6 +65,8 @@ import type { PanelTab, TabsState } from '@/services/tab-store';
 import { showToast } from '@/utils';
 import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
 import type { McpPanelSpec } from '@/services/mcp-store';
+import { loadSportsStreamsInstances, addSportsStreamsInstance, SPORTS_STREAMS_INSTANCE_PREFIX } from '@/services/sports-streams-instances';
+import type { SportsStreamsInstanceSpec } from '@/services/sports-streams-instances';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import type { AuthSession } from '@/services/auth-state';
 import { PanelGateReason, evaluateTabCap, exportLockToGateReason, getPanelGateReason, hasPremiumAccess, resolveBillingAwareGateReason, resolveGateAction } from '@/services/panel-gating';
@@ -195,6 +197,7 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, Deferred
 const DEFERRED_DYNAMIC_PANEL_FOOTPRINTS: Readonly<Record<string, DeferredPanelShellFootprint>> = {
   'cw-': { rowSpan: 2 },
   'mcp-': { rowSpan: 2 },
+  [SPORTS_STREAMS_INSTANCE_PREFIX]: { rowSpan: 2 },
 };
 
 const DEFERRED_PANEL_RETRY_DELAY_MS = 1_000;
@@ -362,6 +365,7 @@ export class PanelLayoutManager implements AppModule {
   private proBlockUnsubscribe: (() => void) | null = null;
   private proBlockEntitlementUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
+  private boundSportsStreamsAddHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private unsubscribeSubscriptionChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
@@ -566,6 +570,13 @@ export class PanelLayoutManager implements AppModule {
     }) as EventListener;
     this.ctx.container.addEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
 
+    // "+ Multiscreen panel" button inside SportsStreamsPanel — no modal
+    // needed, just spin up another instance with a generated id.
+    this.boundSportsStreamsAddHandler = (() => {
+      this.addSportsStreamsPanelInstance(addSportsStreamsInstance());
+    }) as EventListener;
+    this.ctx.container.addEventListener('wm:sports-streams-add', this.boundSportsStreamsAddHandler);
+
     // Pro Activation Onboarding: after the dashboard settles, evaluate whether
     // a pending-onboarding marker should open the interstitial (or surface the
     // finish-setup chip). Deferred off the boot critical path like the panel
@@ -620,6 +631,10 @@ export class PanelLayoutManager implements AppModule {
     if (this.boundWidgetCreatorHandler) {
       this.ctx.container.removeEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
       this.boundWidgetCreatorHandler = null;
+    }
+    if (this.boundSportsStreamsAddHandler) {
+      this.ctx.container.removeEventListener('wm:sports-streams-add', this.boundSportsStreamsAddHandler);
+      this.boundSportsStreamsAddHandler = null;
     }
     this.panelDragCleanupHandlers.forEach((cleanup) => cleanup());
     this.panelDragCleanupHandlers = [];
@@ -1273,7 +1288,7 @@ export class PanelLayoutManager implements AppModule {
     bottomSet: string[],
   ): void {
     const isDynamicPanel = (k: string) =>
-      !ALL_PANELS[k] && (k === 'runtime-config' || k.startsWith('cw-') || k.startsWith('mcp-'));
+      !ALL_PANELS[k] && (k === 'runtime-config' || k.startsWith('cw-') || k.startsWith('mcp-') || k.startsWith(SPORTS_STREAMS_INSTANCE_PREFIX));
 
     const next: Record<string, PanelConfig> = {};
     for (const [key, config] of Object.entries(panelSettings)) {
@@ -2292,13 +2307,42 @@ export class PanelLayoutManager implements AppModule {
     // Global Giving panel (all variants)
     this.lazyDefaultPanel('giving', () => import('@/components/GivingPanel'), 'GivingPanel');
 
-    // Personal-use widgets, gated by VITE_ENABLE_SPORTS_* flags (see panels.ts).
-    // shouldCreatePanel only returns true when the corresponding flag was on
-    // at build time.
-    this.lazyDefaultPanel('sports-scores', () => import('@/components/SportsScoresPanel'), 'SportsScoresPanel');
+    // Personal-use Sports category, gated by VITE_ENABLE_SPORTS (see panels.ts).
+    // shouldCreatePanel only returns true when the flag was on at build time.
+    this.lazyDefaultPanel('sports-nfl', () => import('@/components/SportsLeaguePanel'), 'NflScoresPanel');
+    this.lazyDefaultPanel('sports-nba', () => import('@/components/SportsLeaguePanel'), 'NbaScoresPanel');
+    this.lazyDefaultPanel('sports-mlb', () => import('@/components/SportsLeaguePanel'), 'MlbScoresPanel');
+    this.lazyDefaultPanel('sports-nhl', () => import('@/components/SportsLeaguePanel'), 'NhlScoresPanel');
+    this.lazyDefaultPanel('sports-epl', () => import('@/components/SportsLeaguePanel'), 'PremierLeagueScoresPanel');
+    this.lazyDefaultPanel('sports-mls', () => import('@/components/SportsLeaguePanel'), 'MlsScoresPanel');
+    this.lazyDefaultPanel('sports-map', () => import('@/components/SportsMapPanel'), 'SportsMapPanel');
+    this.lazyDefaultPanel('sports-streams', () => import('@/components/SportsStreamsPanel'), 'SportsStreamsPanel');
+    this.lazyDefaultPanel('sports-insights', () => import('@/components/SportsInsightsPanel'), 'SportsInsightsPanel');
     this.lazyDefaultPanel('sports-standings', () => import('@/components/SportsStandingsPanel'), 'SportsStandingsPanel');
     this.lazyDefaultPanel('sports-schedule', () => import('@/components/SportsSchedulePanel'), 'SportsSchedulePanel');
     this.lazyDefaultPanel('sports-news', () => import('@/components/SportsNewsPanel'), 'SportsNewsPanel');
+
+    // Extra multiscreen "My Live Streams" instances the user has added
+    // (base panel above is the always-on singleton; these are optional
+    // copies for watching multiple channels at once — see
+    // sports-streams-instances.ts). Only load them when the base panel
+    // itself is available, same flag boundary as the rest of this block.
+    if (this.shouldCreatePanel('sports-streams')) {
+      for (const spec of loadSportsStreamsInstances()) {
+        if (!this.ctx.panelSettings[spec.id]) {
+          this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
+        }
+        const capturedSpec = spec;
+        this.lazyPanel(spec.id, () =>
+          this.importPanel(
+            spec.id,
+            () => import('@/components/SportsStreamsPanel'),
+            'SportsStreamsPanel',
+            (SportsStreamsPanel) => new SportsStreamsPanel(capturedSpec.id, capturedSpec.title),
+          ),
+        );
+      }
+    }
 
     // Happy variant panels (lazy-loaded — only relevant for happy variant)
     if (SITE_VARIANT === 'happy') {
@@ -2794,6 +2838,19 @@ export class PanelLayoutManager implements AppModule {
       () => import('@/components/CustomWidgetPanel'),
       'CustomWidgetPanel',
       (CustomWidgetPanel) => new CustomWidgetPanel(spec),
+    ).then((panel) => {
+      if (panel) this.addDynamicPanel(spec.id, panel);
+    });
+  }
+
+  addSportsStreamsPanelInstance(spec: SportsStreamsInstanceSpec): void {
+    this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
+    saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+    void this.importPanel(
+      spec.id,
+      () => import('@/components/SportsStreamsPanel'),
+      'SportsStreamsPanel',
+      (SportsStreamsPanel) => new SportsStreamsPanel(spec.id, spec.title),
     ).then((panel) => {
       if (panel) this.addDynamicPanel(spec.id, panel);
     });

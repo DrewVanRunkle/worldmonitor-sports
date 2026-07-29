@@ -16,15 +16,11 @@ const _desktop = isDesktopRuntime();
 // map-layer-definitions.ts and tests/browser-bundle-secret-guard (allowlist).
 const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
-// Personal-use widget, default OFF everywhere. Only exists in FULL_PANELS
-// (and therefore ALL_PANELS/VARIANT_DEFAULTS) when explicitly enabled via
-// local .env, so it never appears for other users/deployments.
-const SPORTS_SCORES_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS_SCORES === 'true';
-// Same personal-use pattern as SPORTS_SCORES_ENABLED above, one flag per panel
-// so each can be toggled independently.
-const SPORTS_STANDINGS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS_STANDINGS === 'true';
-const SPORTS_SCHEDULE_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS_SCHEDULE === 'true';
-const SPORTS_NEWS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS_NEWS === 'true';
+// Personal-use Sports category (scores/schedule, standings, headlines, venue
+// map, streams, AI recap), default OFF everywhere. Panel keys only exist in
+// FULL_PANELS (and therefore ALL_PANELS/VARIANT_DEFAULTS) when explicitly
+// enabled via local .env, so they never appear for other users/deployments.
+const SPORTS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS === 'true';
 
 // ============================================
 // FULL VARIANT (Geopolitical)
@@ -137,10 +133,20 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'deduction': { name: 'Deduct Situation', enabled: false, priority: 1, premium: 'locked' as const },
   'geo-hubs': { name: 'Geopolitical Hubs', enabled: false, priority: 2 },
   'tech-hubs': { name: 'Hot Tech Hubs', enabled: false, priority: 2 },
-  ...(SPORTS_SCORES_ENABLED && { 'sports-scores': { name: 'Sports Scores', enabled: true, priority: 2 } }),
-  ...(SPORTS_STANDINGS_ENABLED && { 'sports-standings': { name: 'Sports Standings', enabled: true, priority: 2 } }),
-  ...(SPORTS_SCHEDULE_ENABLED && { 'sports-schedule': { name: 'Upcoming Games', enabled: true, priority: 2 } }),
-  ...(SPORTS_NEWS_ENABLED && { 'sports-news': { name: 'Sports Headlines', enabled: true, priority: 2 } }),
+  ...(SPORTS_ENABLED && {
+    'sports-nfl': { name: 'NFL Scores', enabled: true, priority: 2 },
+    'sports-nba': { name: 'NBA Scores', enabled: true, priority: 2 },
+    'sports-mlb': { name: 'MLB Scores', enabled: true, priority: 2 },
+    'sports-nhl': { name: 'NHL Scores', enabled: true, priority: 2 },
+    'sports-epl': { name: 'Premier League Scores', enabled: true, priority: 2 },
+    'sports-mls': { name: 'MLS Scores', enabled: true, priority: 2 },
+    'sports-map': { name: 'Sports Venue Map', enabled: true, priority: 2 },
+    'sports-streams': { name: 'My Live Streams', enabled: true, priority: 2 },
+    'sports-insights': { name: 'AI Sports Insights', enabled: true, priority: 2 },
+    'sports-standings': { name: 'Sports Standings', enabled: true, priority: 2 },
+    'sports-schedule': { name: 'Upcoming Games', enabled: true, priority: 2 },
+    'sports-news': { name: 'Sports Headlines', enabled: true, priority: 2 },
+  }),
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
@@ -1486,6 +1492,15 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
     labelKey: 'header.panelCatHappyPlanet',
     panelKeys: ['species', 'renewable', 'giving'],
     variants: ['happy'],
+  },
+
+  // Personal-use Sports category — only meaningfully shows once
+  // VITE_ENABLE_SPORTS is set (see SPORTS_ENABLED above), since none of
+  // these panel keys otherwise exist in the user's panel settings.
+  sports: {
+    labelKey: 'header.panelCatSports',
+    panelKeys: ['sports-nfl', 'sports-nba', 'sports-mlb', 'sports-nhl', 'sports-epl', 'sports-mls', 'sports-map', 'sports-streams', 'sports-insights', 'sports-standings', 'sports-schedule', 'sports-news'],
+    variants: ['full'],
   },
 };
 

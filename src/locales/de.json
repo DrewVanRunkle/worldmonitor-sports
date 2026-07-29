@@ -257,7 +257,8 @@
     "panelCatCommodityEcon": "Wirtschaft & Handel",
     "panelCatHappyNews": "Gute Nachrichten",
     "panelCatHappyPlanet": "Planet & Spenden",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatSports": "Sports"
   },
   "panels": {
     "liveNews": "Live-Nachrichten",

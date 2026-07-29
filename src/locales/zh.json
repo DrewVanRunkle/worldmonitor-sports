@@ -257,7 +257,8 @@
     "panelCatCommodityEcon": "经济与贸易",
     "panelCatHappyNews": "好消息",
     "panelCatHappyPlanet": "地球与慈善",
-    "embed": "Embed"
+    "embed": "Embed",
+    "panelCatSports": "Sports"
   },
   "panels": {
     "liveNews": "实时新闻",

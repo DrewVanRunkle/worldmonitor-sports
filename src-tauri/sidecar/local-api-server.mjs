@@ -1630,6 +1630,181 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
+  // Sports stream proxy — user-supplied IPTV .m3u8/.ts links (sports-streams
+  // panel). Fetches server-side to bypass the CORS/CORB wall these panels put
+  // up (built for VLC/Kodi, not browsers, so they never send CORS headers).
+  // For manifests, rewrites every segment/sub-playlist URI to route back
+  // through this same proxy so segment fetches don't hit the origin directly
+  // and re-fail CORS the same way the manifest did.
+  if (requestUrl.pathname === '/api/sports-stream-proxy') {
+    // POST body carries { url, ref? } as JSON instead of query params —
+    // used by the Xtream Codes import flow specifically, since that target
+    // URL contains literal "username="/"password=" query-parameter names
+    // (Xtream's own player_api.php contract, not something this app
+    // controls). A network-level security appliance (DPI/IDS, e.g. UniFi
+    // threat management) can flag "password=" appearing anywhere in a
+    // request URL — including nested/URL-encoded inside this proxy's own
+    // `url=` query param — as a credential-leak signature and block it
+    // before it ever reaches this server. Query-string GET stays the
+    // default for stream playback (manifests/segments), which never hits
+    // this pattern since Xtream embeds credentials as path segments there
+    // (/live/<user>/<pass>/<id>.m3u8), not as a named query parameter.
+    let targetUrl;
+    let bodyRefParam = null;
+    if (req.method === 'POST') {
+      const body = await readBody(req);
+      try {
+        const parsedBody = body ? JSON.parse(body.toString()) : {};
+        targetUrl = typeof parsedBody.url === 'string' ? parsedBody.url : null;
+        bodyRefParam = typeof parsedBody.ref === 'string' ? parsedBody.ref : null;
+      } catch {
+        return json({ error: 'Invalid JSON body' }, 400);
+      }
+    } else {
+      targetUrl = requestUrl.searchParams.get('url');
+    }
+    if (!targetUrl) return json({ error: 'Missing url parameter' }, 400);
+
+    // Xtream-Codes-style IPTV panels almost universally 302 the manifest/
+    // segment request to a token-signed CDN edge URL, and fetchWithTimeout's
+    // https: path uses raw https.request (needed for DNS-pinning), which —
+    // unlike fetch() — never follows redirects on its own. Follow them here,
+    // re-running the SSRF check on every hop: blindly following an
+    // unvalidated redirect target is a classic SSRF bypass (a URL that
+    // passes the check can still 302 to an internal address).
+    const MAX_REDIRECTS = 5;
+    let currentUrl = targetUrl;
+    // Browsers send a Referer (origin-only, per the strict-origin-when-cross-
+    // origin default policy) on the follow-up request when a redirect
+    // crosses origins, and CDN edges commonly reject referrer-less requests —
+    // masked as 404 rather than 403, same as a User-Agent check. That covers
+    // redirects *within* one proxied fetch, but manifest rewriting resolves
+    // segment URIs against the already-redirected CDN origin (e.g. a bare
+    // IP), so each segment fetch arrives as its own fresh top-level request
+    // with no memory of the panel origin that issued the token. Carry it
+    // forward explicitly via a `ref` param instead of re-deriving it, since
+    // by the time a segment request lands here the panel origin is gone.
+    const refParam = req.method === 'POST' ? bodyRefParam : requestUrl.searchParams.get('ref');
+    let previousOrigin = refParam || null;
+    let parsed;
+    let response;
+
+    try {
+      for (let hop = 0; ; hop += 1) {
+        const safety = await isSafeUrl(currentUrl);
+        if (!safety.safe) {
+          context.logger.warn(`[local-api] sports-stream-proxy SSRF blocked: ${safety.reason} (url=${redactUrlForLog(currentUrl)})`);
+          return json({ error: safety.reason }, 403);
+        }
+        try {
+          parsed = new URL(currentUrl);
+        } catch {
+          return json({ error: 'Invalid url' }, 400);
+        }
+        // First hop with no explicit ref: this is the original request the
+        // frontend made (top-level manifest fetch), so its own origin *is*
+        // the panel origin — use it for any redirects this hop takes.
+        if (hop === 0 && !previousOrigin) previousOrigin = parsed.origin;
+
+        // Pin to the first IPv4 address validated by isSafeUrl() so the
+        // actual TCP connection goes to the same IP we checked, closing the
+        // TOCTOU DNS-rebinding window.
+        const pinnedV4 = safety.resolvedAddresses?.find(a => a.includes('.'));
+        response = await fetchWithTimeout(currentUrl, {
+          headers: {
+            'User-Agent': CHROME_UA,
+            'Accept': '*/*',
+            ...(previousOrigin ? { 'Referer': `${previousOrigin}/` } : {}),
+          },
+          ...(pinnedV4 ? { resolvedAddress: pinnedV4 } : {}),
+        }, 12000);
+
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers?.get?.('location');
+          if (location) {
+            if (hop >= MAX_REDIRECTS) {
+              return json({ error: 'Too many redirects' }, 502);
+            }
+            currentUrl = new URL(location, currentUrl).toString();
+            continue;
+          }
+        }
+        break;
+      }
+
+      if (response.status < 200 || response.status >= 300) {
+        // Surface the upstream's own error body (truncated) instead of just
+        // the status — Xtream-style panels/CDNs often explain the real
+        // rejection reason (expired token, bad UA, connection limit) in the
+        // response text even on a 403/404.
+        let upstreamBody = '';
+        try { upstreamBody = (await response.text()).slice(0, 300); } catch { /* ignore */ }
+        context.logger.warn(`[local-api] sports-stream-proxy upstream ${response.status} (url=${redactUrlForLog(currentUrl)}): ${upstreamBody}`);
+        return json({ error: `Upstream ${response.status}`, upstreamBody }, response.status);
+      }
+
+      const contentType = response.headers?.get?.('content-type') || '';
+      const isManifest = parsed.pathname.toLowerCase().endsWith('.m3u8')
+        || contentType.includes('mpegurl') || contentType.includes('x-mpegurl');
+
+      if (isManifest) {
+        const toProxyUrl = (uri) => {
+          // Resolve per RFC 3986 (what every real HLS client does) instead
+          // of naively pasting baseOrigin+basePath+uri onto the front: an
+          // absolute path (/foo/bar) or protocol-relative reference
+          // (//host/path) is supposed to *replace* the base path, not
+          // follow it — naive concatenation of those produced a mangled
+          // double path (.../play/hls/<token>==//play/hls-nginx/...) that
+          // 404'd even though the token itself was valid.
+          let full;
+          try {
+            full = new URL(uri, parsed).toString();
+          } catch {
+            full = uri;
+          }
+          // Carry the panel origin forward so each segment/sub-playlist
+          // fetch — a fresh top-level request with no memory of how the
+          // manifest itself got redirected here — still sends the Referer
+          // the CDN expects.
+          const ref = previousOrigin ? `&ref=${encodeURIComponent(previousOrigin)}` : '';
+          return `/api/sports-stream-proxy?url=${encodeURIComponent(full)}${ref}`;
+        };
+        let manifest = await response.text();
+        manifest = manifest.replace(/^(?!#)(\S+)/gm, (match) => toProxyUrl(match));
+        manifest = manifest.replace(/URI="([^"]+)"/g, (_m, uri) => `URI="${toProxyUrl(uri)}"`);
+        return new Response(manifest, {
+          status: 200,
+          headers: { 'content-type': 'application/vnd.apple.mpegurl', 'cache-control': 'no-cache' },
+        });
+      }
+
+      // Unlike the manifest (which must always be re-polled for live
+      // updates), a given *media segment* URL's bytes never change once
+      // published — sliding-window live manifests routinely re-list a
+      // segment from the previous poll, and without caching the browser
+      // re-fetches (and this proxy re-requests from the panel) content it
+      // already has. That reasoning only holds because segment URLs carry a
+      // unique per-fetch token — it does NOT hold for other content proxied
+      // through this same route (e.g. the Xtream player_api.php JSON used to
+      // list channels for import, xtream-codes.ts): that URL is stable and
+      // repeatable, and the channel list underneath it can change, so a long
+      // cache would silently hide newly-added channels on re-fetch.
+      const looksLikeMediaSegment = contentType.includes('video/') || contentType.includes('mp2t') || parsed.pathname.toLowerCase().endsWith('.ts');
+      const body = Buffer.from(await response.arrayBuffer());
+      return new Response(body, {
+        status: 200,
+        headers: {
+          'content-type': contentType || 'application/octet-stream',
+          'cache-control': looksLikeMediaSegment ? 'public, max-age=86400, immutable' : 'no-cache',
+        },
+      });
+    } catch (e) {
+      const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
+      context.logger.warn(`[local-api] sports-stream-proxy error: ${e.message} (url=${redactUrlForLog(currentUrl)})`);
+      return json({ error: isTimeout ? 'Stream timeout' : 'Failed to fetch stream', detail: e.message }, isTimeout ? 504 : 502);
+    }
+  }
+
   if (requestUrl.pathname === '/api/local-env-update') {
     if (req.method === 'POST') {
       const body = await readBody(req);
@@ -1902,6 +2077,26 @@ export async function createLocalApiServer(options = {}) {
           context.logger.warn(
             `[local-api] UPSTASH_REDIS_REST_URL is not a valid URL; not added to the private-fetch allowlist (Redis calls will be SSRF-blocked): ${err.message}`,
           );
+        }
+      }
+      // Docker self-host ONLY: OLLAMA_API_URL / LLM_API_URL may point at a
+      // private LAN host (e.g. a local Ollama or LM Studio instance on
+      // another box) — without trusting it the SSRF guard blocks every
+      // completion/health-probe call, and callLlm's provider-chain gate
+      // just silently skips it as "offline". Same containment as the Redis
+      // allowlist above: gated on mode === 'docker' so desktop/production
+      // startup never widens the SSRF boundary via env.
+      if (context.mode === 'docker') {
+        for (const envVar of ['OLLAMA_API_URL', 'LLM_API_URL']) {
+          const value = process.env[envVar];
+          if (!value) continue;
+          try {
+            extraAllowedPrivateOrigins.push(new URL(value).origin);
+          } catch (err) {
+            context.logger.warn(
+              `[local-api] ${envVar} is not a valid URL; not added to the private-fetch allowlist (LLM calls to it will be SSRF-blocked): ${err.message}`,
+            );
+          }
         }
       }
       if (context.allowPrivateRemoteBase) {

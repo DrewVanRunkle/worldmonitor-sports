@@ -147,7 +147,15 @@ export function saveToStorage<T>(key: string, value: T): void {
 }
 
 export function generateId(): string {
-  return `id-${crypto.randomUUID()}`;
+  // crypto.randomUUID() only exists in secure contexts (HTTPS or localhost);
+  // it's undefined over plain http://<lan-ip>. getRandomValues() has no such
+  // restriction, so fall back to it instead of crashing.
+  if (crypto.randomUUID) {
+    return `id-${crypto.randomUUID()}`;
+  }
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return `id-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
 /** Breakpoint (px): below this width the app uses the simplified mobile layout. Must match CSS @media (max-width: …). */

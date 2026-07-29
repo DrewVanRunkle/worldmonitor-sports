@@ -615,6 +615,13 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
+    {
+      "path": "api/sports-insights.ts",
+      "category": "internal-helper",
+      "reason": "Personal-use AI Sports Insights backend for the VITE_ENABLE_SPORTS panel category (see AGENTS/plan history). Plain {games} in / {text} out — no auth, no product surface; every deployment except this fork's own gets an instant not_configured no-op since it only calls an LLM when LLM_API_URL/LLM_API_KEY (or Ollama) is set. Modeling a single personal opt-in widget's backend as a versioned sebuf service would be over-engineering — same rationale as api/wm-session.js.",
+      "owner": "@DrewVanRunkle",
+      "removal_issue": null
+    },
 
     {
       "path": "api/latest-brief.ts",

@@ -678,6 +678,108 @@ test('preserves Request body when handler uses fetch(Request)', async () => {
   }
 });
 
+test('docker mode allowlists LLM_API_URL for private-network fetch', async () => {
+  // Self-hosted Docker LLM providers (LM Studio, Ollama, etc.) are commonly
+  // reachable only via a private LAN IP. Without this allowlisting, the SSRF
+  // guard blocks every completion/health-probe call and callLlm's provider
+  // chain silently treats the provider as "offline" (#sports-insights).
+  const upstream = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const upstreamPort = await listen(upstream);
+  const upstreamOrigin = `http://127.0.0.1:${upstreamPort}`;
+  const originalLlmApiUrl = process.env.LLM_API_URL;
+  process.env.LLM_API_URL = `${upstreamOrigin}/v1/chat/completions`;
+
+  const localApi = await setupApiDir({
+    'llm-fetch.js': `
+      export default async function handler() {
+        const upstream = await fetch(process.env.LLM_API_URL);
+        return new Response(JSON.stringify({ status: upstream.status }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    mode: 'docker',
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/llm-fetch`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.status, 200);
+  } finally {
+    if (originalLlmApiUrl === undefined) delete process.env.LLM_API_URL;
+    else process.env.LLM_API_URL = originalLlmApiUrl;
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('non-docker mode still SSRF-blocks LLM_API_URL private-network fetch', async () => {
+  const upstream = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const upstreamPort = await listen(upstream);
+  const upstreamOrigin = `http://127.0.0.1:${upstreamPort}`;
+  const originalLlmApiUrl = process.env.LLM_API_URL;
+  process.env.LLM_API_URL = `${upstreamOrigin}/v1/chat/completions`;
+
+  const localApi = await setupApiDir({
+    'llm-fetch.js': `
+      export default async function handler() {
+        try {
+          await fetch(process.env.LLM_API_URL);
+          return new Response(JSON.stringify({ blocked: false }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ blocked: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/llm-fetch`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.blocked, true);
+  } finally {
+    if (originalLlmApiUrl === undefined) delete process.env.LLM_API_URL;
+    else process.env.LLM_API_URL = originalLlmApiUrl;
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
 test('returns local handler error when fetch(Request) uses a consumed body', async () => {
   let upstreamHits = 0;
   const upstream = createServer((_req, res) => {
@@ -2088,6 +2190,119 @@ test('rss-proxy blocks URLs with credentials (SSRF protection)', async () => {
     assert.equal(response.status, 403);
     const body = await response.json();
     assert.ok(body.error.includes('credentials'));
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('sports-stream-proxy blocks requests to localhost and private IP ranges (SSRF protection)', async () => {
+  const localApi = await setupApiDir({});
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const localhost = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy?url=http://127.0.0.1:3000/live.m3u8`);
+    assert.equal(localhost.status, 403);
+
+    const privateA = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy?url=http://192.168.1.1/live.m3u8`);
+    assert.equal(privateA.status, 403);
+
+    const privateB = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy?url=http://10.0.0.1/live.m3u8`);
+    assert.equal(privateB.status, 403);
+
+    const metadata = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy?url=http://169.254.169.254/latest/meta-data/`);
+    assert.equal(metadata.status, 403);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('sports-stream-proxy blocks non-http protocols and URLs with credentials (SSRF protection)', async () => {
+  const localApi = await setupApiDir({});
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const fileProtocol = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy?url=file:///etc/passwd`);
+    assert.equal(fileProtocol.status, 403);
+    const fileBody = await fileProtocol.json();
+    assert.ok(fileBody.error.includes('http'));
+
+    const withCreds = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy?url=http://user:pass@example.com/live.m3u8`);
+    assert.equal(withCreds.status, 403);
+    const credsBody = await withCreds.json();
+    assert.ok(credsBody.error.includes('credentials'));
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('sports-stream-proxy requires the url parameter', async () => {
+  const localApi = await setupApiDir({});
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy`);
+    assert.equal(response.status, 400);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('sports-stream-proxy accepts POST with a JSON body and applies the same SSRF guard', async () => {
+  const localApi = await setupApiDir({});
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    // Missing url in the body
+    const missing = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(missing.status, 400);
+
+    // Malformed JSON body
+    const badJson = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'not json',
+    });
+    assert.equal(badJson.status, 400);
+
+    // SSRF guard applies identically to a POST-body target as to a query-string one
+    const privateTarget = await authFetch(`http://127.0.0.1:${port}/api/sports-stream-proxy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'http://192.168.1.1/player_api.php?username=u&password=p' }),
+    });
+    assert.equal(privateTarget.status, 403);
   } finally {
     await app.close();
     await localApi.cleanup();

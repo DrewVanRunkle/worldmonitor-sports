@@ -161,13 +161,15 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   RuntimeConfig: 'panels-risk', SatelliteFires: 'panels-risk',
   SecurityAdvisories: 'panels-risk', ServiceStatus: 'panels-risk',
   SocialVelocity: 'panels-risk', SpeciesComeback: 'panels-risk',
+  SportsLeague: 'panels-risk', SportsMap: 'panels-risk',
+  SportsStreams: 'panels-risk', SportsInsights: 'panels-risk',
   TechEvents: 'panels-risk',
   ThreatTimeline: 'panels-risk',
   TechHubs: 'panels-risk', TechReadiness: 'panels-risk',
   WorldClock: 'panels-risk',
-  // Personal-use sports widgets (VITE_ENABLE_SPORTS_*, see panels.ts)
-  SportsScores: 'panels-risk', SportsStandings: 'panels-risk',
-  SportsSchedule: 'panels-risk', SportsNews: 'panels-risk',
+  // Personal-use sports widgets (VITE_ENABLE_SPORTS, see panels.ts)
+  SportsStandings: 'panels-risk', SportsSchedule: 'panels-risk',
+  SportsNews: 'panels-risk',
 };
 
 const PANEL_SUPPORT_CLUSTER: Record<string, PanelSupportChunkName> = {

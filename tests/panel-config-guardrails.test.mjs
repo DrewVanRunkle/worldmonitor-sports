@@ -35,6 +35,29 @@ function topLevelPanelIds(variant) {
   const keyRe = /['"]?([a-zA-Z0-9_-]+)['"]?\s*:\s*\{/g;
   let mm;
   while ((mm = keyRe.exec(body))) { if (depthAt[mm.index] === 0) ids.add(mm[1]); }
+
+  // Feature-flagged panel groups are spread in as `...(FLAG && { 'key': {...}, ... })`
+  // — one extra brace level deep versus a plain top-level entry. Walk each such
+  // spread's own object literal and collect ITS top-level keys too, so a
+  // conditionally-registered panel (e.g. the personal-use sports category) isn't
+  // invisible to the registry just because it's gated behind a build-time flag.
+  const spreadRe = /\.\.\.\(\s*[A-Z][A-Z0-9_]*\s*&&\s*\{/g;
+  let sm;
+  while ((sm = spreadRe.exec(body))) {
+    if (depthAt[sm.index] !== 0) continue;
+    const innerOpen = body.indexOf('{', sm.index);
+    let innerDepth = 0, innerEnd = innerOpen;
+    for (let i = innerOpen; i < body.length; i++) {
+      if (body[i] === '{') innerDepth++;
+      else if (body[i] === '}') { innerDepth--; if (innerDepth === 0) { innerEnd = i; break; } }
+    }
+    const innerBody = body.slice(innerOpen + 1, innerEnd);
+    const innerDepthAt = new Array(innerBody.length).fill(0);
+    let innerCur = 0;
+    for (let i = 0; i < innerBody.length; i++) { innerDepthAt[i] = innerCur; if (innerBody[i] === '{') innerCur++; else if (innerBody[i] === '}') innerCur--; }
+    let im;
+    while ((im = keyRe.exec(innerBody))) { if (innerDepthAt[im.index] === 0) ids.add(im[1]); }
+  }
   return [...ids];
 }
 
@@ -565,6 +588,18 @@ describe('panel-config guardrails', () => {
     const allowedPairs = new Set([
       'ai-regulation|fin-regulation',
       'fin-regulation|ai-regulation',
+      // Personal-use sports league panels — short, similarly-shaped league
+      // abbreviations (nfl/nba/nhl/mlb/mls/epl) are inherently close in edit
+      // distance to each other and to "sports-map"; these are deliberate,
+      // distinct panel ids, not typos.
+      'sports-nfl|sports-nba', 'sports-nba|sports-nfl',
+      'sports-nfl|sports-nhl', 'sports-nhl|sports-nfl',
+      'sports-nfl|sports-epl', 'sports-epl|sports-nfl',
+      'sports-nba|sports-nhl', 'sports-nhl|sports-nba',
+      'sports-mlb|sports-mls', 'sports-mls|sports-mlb',
+      'sports-mlb|sports-map', 'sports-map|sports-mlb',
+      'sports-nhl|sports-epl', 'sports-epl|sports-nhl',
+      'sports-mls|sports-map', 'sports-map|sports-mls',
     ]);
     const typos = [];
     for (let i = 0; i < keys.length; i++) {

@@ -1,5 +1,5 @@
-// Personal-use widget (VITE_ENABLE_SPORTS_SCORES): pulls today's scoreboard
-// from ESPN's public site API. No API key required, no first-party backend
+// Personal-use widget (VITE_ENABLE_SPORTS): pulls today's scoreboard from
+// ESPN's public site API. No API key required, no first-party backend
 // involved — this hits ESPN directly from the browser.
 
 export interface SportsGame {
@@ -13,6 +13,9 @@ export interface SportsGame {
   awayTeam: string;
   awayAbbr: string;
   awayScore: string;
+  venueName?: string;
+  venueCity?: string;
+  venueState?: string;
 }
 
 export interface SportsScoreboard {
@@ -20,19 +23,40 @@ export interface SportsScoreboard {
   games: SportsGame[];
 }
 
+export type LeagueKey = 'nfl' | 'nba' | 'mlb' | 'nhl' | 'epl' | 'mls';
+
 interface LeagueDef {
+  key: LeagueKey;
   slug: string;
   label: string;
+  /** Approximate 1-indexed [startMonth, endMonth] season window. Wraps the
+   *  year boundary when startMonth > endMonth (e.g. NFL: Aug–Feb). Used to
+   *  skip fetching/showing a league entirely outside its usual season —
+   *  ESPN still returns off-season noise (summer league, preseason
+   *  friendlies) that isn't worth a live-scores slot. */
+  seasonMonths: [number, number];
 }
 
-const LEAGUES: LeagueDef[] = [
-  { slug: 'football/nfl', label: 'NFL' },
-  { slug: 'basketball/nba', label: 'NBA' },
-  { slug: 'baseball/mlb', label: 'MLB' },
-  { slug: 'hockey/nhl', label: 'NHL' },
-  { slug: 'soccer/eng.1', label: 'Premier League' },
-  { slug: 'soccer/usa.1', label: 'MLS' },
+export const LEAGUES: LeagueDef[] = [
+  { key: 'nfl', slug: 'football/nfl', label: 'NFL', seasonMonths: [8, 2] },
+  { key: 'nba', slug: 'basketball/nba', label: 'NBA', seasonMonths: [10, 6] },
+  { key: 'mlb', slug: 'baseball/mlb', label: 'MLB', seasonMonths: [3, 11] },
+  { key: 'nhl', slug: 'hockey/nhl', label: 'NHL', seasonMonths: [10, 6] },
+  { key: 'epl', slug: 'soccer/eng.1', label: 'Premier League', seasonMonths: [8, 5] },
+  { key: 'mls', slug: 'soccer/usa.1', label: 'MLS', seasonMonths: [2, 12] },
 ];
+
+function getLeagueDef(key: LeagueKey): LeagueDef {
+  const def = LEAGUES.find(l => l.key === key);
+  if (!def) throw new Error(`Unknown league key: ${key}`);
+  return def;
+}
+
+export function isLeagueInSeason(key: LeagueKey, date: Date = new Date()): boolean {
+  const [start, end] = getLeagueDef(key).seasonMonths;
+  const month = date.getMonth() + 1;
+  return start <= end ? (month >= start && month <= end) : (month >= start || month <= end);
+}
 
 interface EspnCompetitor {
   homeAway: 'home' | 'away';
@@ -40,29 +64,43 @@ interface EspnCompetitor {
   team: { displayName: string; abbreviation: string };
 }
 
+interface EspnVenue {
+  fullName?: string;
+  address?: { city?: string; state?: string; country?: string };
+}
+
 interface EspnEvent {
   id: string;
   shortName: string;
   status?: { type?: { state?: string; shortDetail?: string } };
-  competitions?: Array<{ competitors?: EspnCompetitor[] }>;
+  competitions?: Array<{ competitors?: EspnCompetitor[]; venue?: EspnVenue }>;
 }
 
 interface EspnScoreboardResponse {
   events?: EspnEvent[];
 }
 
-async function fetchLeagueScoreboard(def: LeagueDef, signal: AbortSignal): Promise<SportsGame[]> {
-  const url = `https://site.api.espn.com/apis/site/v2/sports/${def.slug}/scoreboard`;
+function formatEspnDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+}
+
+async function fetchLeagueScoreboard(def: LeagueDef, signal: AbortSignal, date?: Date): Promise<SportsGame[]> {
+  const url = `https://site.api.espn.com/apis/site/v2/sports/${def.slug}/scoreboard${date ? `?dates=${formatEspnDate(date)}` : ''}`;
   const resp = await fetch(url, { signal });
   if (!resp.ok) throw new Error(`ESPN ${def.label} scoreboard: ${resp.status}`);
   const data = await resp.json() as EspnScoreboardResponse;
 
   const games: SportsGame[] = [];
   for (const event of data.events ?? []) {
-    const competitors = event.competitions?.[0]?.competitors ?? [];
+    const competition = event.competitions?.[0];
+    const competitors = competition?.competitors ?? [];
     const home = competitors.find(c => c.homeAway === 'home');
     const away = competitors.find(c => c.homeAway === 'away');
     if (!home || !away) continue;
+    const venue = competition?.venue;
     games.push({
       id: event.id,
       shortName: event.shortName,
@@ -74,14 +112,28 @@ async function fetchLeagueScoreboard(def: LeagueDef, signal: AbortSignal): Promi
       awayTeam: away.team.displayName,
       awayAbbr: away.team.abbreviation,
       awayScore: away.score ?? '',
+      venueName: venue?.fullName,
+      venueCity: venue?.address?.city,
+      venueState: venue?.address?.state,
     });
   }
   return games;
 }
 
-export async function fetchAllSportsScores(signal: AbortSignal): Promise<SportsScoreboard[]> {
+/** Fetch scores for a single league. Returns [] without a network call when
+ *  the viewed date falls outside that league's usual season window. */
+export async function fetchSingleLeagueScores(key: LeagueKey, signal: AbortSignal, date?: Date): Promise<SportsGame[]> {
+  const def = getLeagueDef(key);
+  if (!isLeagueInSeason(key, date ?? new Date())) return [];
+  return fetchLeagueScoreboard(def, signal, date);
+}
+
+/** Aggregate scores across all leagues, skipping any that are out of season
+ *  for the viewed date. Used by the venue map and AI insights panels. */
+export async function fetchAllSportsScores(signal: AbortSignal, date?: Date): Promise<SportsScoreboard[]> {
+  const inSeasonLeagues = LEAGUES.filter(def => isLeagueInSeason(def.key, date ?? new Date()));
   const results = await Promise.allSettled(
-    LEAGUES.map(async def => ({ label: def.label, games: await fetchLeagueScoreboard(def, signal) })),
+    inSeasonLeagues.map(async def => ({ label: def.label, games: await fetchLeagueScoreboard(def, signal, date) })),
   );
   const boards: SportsScoreboard[] = [];
   for (const result of results) {
