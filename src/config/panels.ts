@@ -20,6 +20,11 @@ const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VI
 // (and therefore ALL_PANELS/VARIANT_DEFAULTS) when explicitly enabled via
 // local .env, so it never appears for other users/deployments.
 const SPORTS_SCORES_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS_SCORES === 'true';
+// Same personal-use pattern as SPORTS_SCORES_ENABLED above, one flag per panel
+// so each can be toggled independently.
+const SPORTS_STANDINGS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS_STANDINGS === 'true';
+const SPORTS_SCHEDULE_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS_SCHEDULE === 'true';
+const SPORTS_NEWS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS_NEWS === 'true';
 
 // ============================================
 // FULL VARIANT (Geopolitical)
@@ -133,6 +138,9 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'geo-hubs': { name: 'Geopolitical Hubs', enabled: false, priority: 2 },
   'tech-hubs': { name: 'Hot Tech Hubs', enabled: false, priority: 2 },
   ...(SPORTS_SCORES_ENABLED && { 'sports-scores': { name: 'Sports Scores', enabled: true, priority: 2 } }),
+  ...(SPORTS_STANDINGS_ENABLED && { 'sports-standings': { name: 'Sports Standings', enabled: true, priority: 2 } }),
+  ...(SPORTS_SCHEDULE_ENABLED && { 'sports-schedule': { name: 'Upcoming Games', enabled: true, priority: 2 } }),
+  ...(SPORTS_NEWS_ENABLED && { 'sports-news': { name: 'Sports Headlines', enabled: true, priority: 2 } }),
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
