@@ -264,6 +264,25 @@ export const COMMANDS: Command[] = [
   { id: 'panel:species', keywords: ['conservation', 'wildlife', 'endangered species', 'conservation wins'], label: 'Panel: Conservation Wins', icon: '\u{1F43C}', category: 'panels' },
   { id: 'panel:renewable', keywords: ['renewable energy', 'solar', 'wind energy', 'green energy'], label: 'Panel: Renewable Energy', icon: '\u2600\uFE0F', category: 'panels' },
 
+  // Personal-use Sports category (VITE_ENABLE_SPORTS \u2014 see panels.ts)
+  { id: 'panel:sports-nfl', keywords: ['nfl', 'football scores', 'american football', 'nfl scores'], label: 'Panel: NFL Scores', icon: '\u{1F3C8}', category: 'panels' },
+  { id: 'panel:sports-nba', keywords: ['nba', 'basketball scores', 'nba scores'], label: 'Panel: NBA Scores', icon: '\u{1F3C0}', category: 'panels' },
+  { id: 'panel:sports-mlb', keywords: ['mlb', 'baseball scores', 'mlb scores'], label: 'Panel: MLB Scores', icon: '\u26BE', category: 'panels' },
+  { id: 'panel:sports-nhl', keywords: ['nhl', 'hockey scores', 'nhl scores'], label: 'Panel: NHL Scores', icon: '\u{1F3D2}', category: 'panels' },
+  { id: 'panel:sports-epl', keywords: ['epl', 'premier league', 'soccer scores', 'football scores'], label: 'Panel: Premier League Scores', icon: '\u26BD', category: 'panels' },
+  { id: 'panel:sports-mls', keywords: ['mls', 'major league soccer', 'soccer scores'], label: 'Panel: MLS Scores', icon: '\u26BD', category: 'panels' },
+  { id: 'panel:sports-map', keywords: ['sports venue map', 'stadiums', 'arenas', 'venue map'], label: 'Panel: Sports Venue Map', icon: '\u{1F5FA}\uFE0F', category: 'panels' },
+  { id: 'panel:sports-streams', keywords: ['live streams', 'iptv', 'my streams', 'live tv'], label: 'Panel: My Live Streams', icon: '\u{1F4FA}', category: 'panels' },
+  { id: 'panel:sports-insights', keywords: ['sports insights', 'ai sports recap', 'sports analysis'], label: 'Panel: AI Sports Insights', icon: '\u{1F9E0}', category: 'panels' },
+  { id: 'panel:sports-standings-nfl', keywords: ['nfl standings', 'nfl division standings', 'nfl playoff picture'], label: 'Panel: NFL Standings', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:sports-standings-nba', keywords: ['nba standings', 'nba division standings', 'nba playoff picture'], label: 'Panel: NBA Standings', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:sports-standings-mlb', keywords: ['mlb standings', 'mlb division standings', 'mlb playoff picture'], label: 'Panel: MLB Standings', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:sports-standings-nhl', keywords: ['nhl standings', 'nhl division standings', 'nhl playoff picture'], label: 'Panel: NHL Standings', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:sports-standings-epl', keywords: ['epl standings', 'premier league standings', 'epl table'], label: 'Panel: Premier League Standings', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:sports-standings-mls', keywords: ['mls standings', 'mls table', 'mls conference standings'], label: 'Panel: MLS Standings', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:sports-schedule', keywords: ['upcoming games', 'sports schedule', 'game schedule', 'sports calendar'], label: 'Panel: Upcoming Games', icon: '\u{1F4C5}', category: 'panels' },
+  { id: 'panel:sports-news', keywords: ['sports headlines', 'sports news', 'espn news'], label: 'Panel: Sports Headlines', icon: '\u{1F4F0}', category: 'panels' },
+
   // View / settings
   { id: 'view:dark', keywords: ['dark', 'dark mode', 'night'], label: 'Switch to dark mode', icon: '\u{1F319}', category: 'view' },
   { id: 'view:light', keywords: ['light', 'light mode', 'day'], label: 'Switch to light mode', icon: '\u2600\uFE0F', category: 'view' },
