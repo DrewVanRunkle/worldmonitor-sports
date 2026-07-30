@@ -144,7 +144,12 @@ const FULL_PANELS: Record<string, PanelConfig> = {
     'sports-epl': { name: 'Premier League Scores', enabled: true, priority: 2 },
     'sports-mls': { name: 'MLS Scores', enabled: true, priority: 2 },
     'sports-map': { name: 'Sports Venue Map', enabled: true, priority: 2 },
-    'sports-standings': { name: 'Sports Standings', enabled: true, priority: 2 },
+    'sports-standings-nfl': { name: 'NFL Standings', enabled: true, priority: 2 },
+    'sports-standings-nba': { name: 'NBA Standings', enabled: true, priority: 2 },
+    'sports-standings-mlb': { name: 'MLB Standings', enabled: true, priority: 2 },
+    'sports-standings-nhl': { name: 'NHL Standings', enabled: true, priority: 2 },
+    'sports-standings-epl': { name: 'Premier League Standings', enabled: true, priority: 2 },
+    'sports-standings-mls': { name: 'MLS Standings', enabled: true, priority: 2 },
     'sports-schedule': { name: 'Upcoming Games', enabled: true, priority: 2 },
     'sports-news': { name: 'Sports Headlines', enabled: true, priority: 2 },
     'sports-streams': { name: 'My Live Streams', enabled: true, priority: 2 },
@@ -1502,7 +1507,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   // these panel keys otherwise exist in the user's panel settings.
   sports: {
     labelKey: 'header.panelCatSports',
-    panelKeys: ['sports-nfl', 'sports-nba', 'sports-mlb', 'sports-nhl', 'sports-epl', 'sports-mls', 'sports-map', 'sports-standings', 'sports-schedule', 'sports-news', 'sports-streams', 'sports-insights'],
+    panelKeys: ['sports-nfl', 'sports-nba', 'sports-mlb', 'sports-nhl', 'sports-epl', 'sports-mls', 'sports-map', 'sports-standings-nfl', 'sports-standings-nba', 'sports-standings-mlb', 'sports-standings-nhl', 'sports-standings-epl', 'sports-standings-mls', 'sports-schedule', 'sports-news', 'sports-streams', 'sports-insights'],
     variants: ['full'],
   },
 };
