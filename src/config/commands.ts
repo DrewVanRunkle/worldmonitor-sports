@@ -274,7 +274,12 @@ export const COMMANDS: Command[] = [
   { id: 'panel:sports-map', keywords: ['sports venue map', 'stadiums', 'arenas', 'venue map'], label: 'Panel: Sports Venue Map', icon: '\u{1F5FA}\uFE0F', category: 'panels' },
   { id: 'panel:sports-streams', keywords: ['live streams', 'iptv', 'my streams', 'live tv'], label: 'Panel: My Live Streams', icon: '\u{1F4FA}', category: 'panels' },
   { id: 'panel:sports-insights', keywords: ['sports insights', 'ai sports recap', 'sports analysis'], label: 'Panel: AI Sports Insights', icon: '\u{1F9E0}', category: 'panels' },
-  { id: 'panel:sports-standings', keywords: ['standings', 'league standings', 'division standings', 'sports standings'], label: 'Panel: Sports Standings', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:sports-standings-nfl', keywords: ['nfl standings', 'nfl division standings', 'nfl playoff picture'], label: 'Panel: NFL Standings', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:sports-standings-nba', keywords: ['nba standings', 'nba division standings', 'nba playoff picture'], label: 'Panel: NBA Standings', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:sports-standings-mlb', keywords: ['mlb standings', 'mlb division standings', 'mlb playoff picture'], label: 'Panel: MLB Standings', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:sports-standings-nhl', keywords: ['nhl standings', 'nhl division standings', 'nhl playoff picture'], label: 'Panel: NHL Standings', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:sports-standings-epl', keywords: ['epl standings', 'premier league standings', 'epl table'], label: 'Panel: Premier League Standings', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:sports-standings-mls', keywords: ['mls standings', 'mls table', 'mls conference standings'], label: 'Panel: MLS Standings', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:sports-schedule', keywords: ['upcoming games', 'sports schedule', 'game schedule', 'sports calendar'], label: 'Panel: Upcoming Games', icon: '\u{1F4C5}', category: 'panels' },
   { id: 'panel:sports-news', keywords: ['sports headlines', 'sports news', 'espn news'], label: 'Panel: Sports Headlines', icon: '\u{1F4F0}', category: 'panels' },
 

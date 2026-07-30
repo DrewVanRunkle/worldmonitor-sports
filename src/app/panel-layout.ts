@@ -2316,11 +2316,16 @@ export class PanelLayoutManager implements AppModule {
     this.lazyDefaultPanel('sports-epl', () => import('@/components/SportsLeaguePanel'), 'PremierLeagueScoresPanel');
     this.lazyDefaultPanel('sports-mls', () => import('@/components/SportsLeaguePanel'), 'MlsScoresPanel');
     this.lazyDefaultPanel('sports-map', () => import('@/components/SportsMapPanel'), 'SportsMapPanel');
-    this.lazyDefaultPanel('sports-streams', () => import('@/components/SportsStreamsPanel'), 'SportsStreamsPanel');
-    this.lazyDefaultPanel('sports-insights', () => import('@/components/SportsInsightsPanel'), 'SportsInsightsPanel');
-    this.lazyDefaultPanel('sports-standings', () => import('@/components/SportsStandingsPanel'), 'SportsStandingsPanel');
+    this.lazyDefaultPanel('sports-standings-nfl', () => import('@/components/SportsStandingsPanel'), 'NflStandingsPanel');
+    this.lazyDefaultPanel('sports-standings-nba', () => import('@/components/SportsStandingsPanel'), 'NbaStandingsPanel');
+    this.lazyDefaultPanel('sports-standings-mlb', () => import('@/components/SportsStandingsPanel'), 'MlbStandingsPanel');
+    this.lazyDefaultPanel('sports-standings-nhl', () => import('@/components/SportsStandingsPanel'), 'NhlStandingsPanel');
+    this.lazyDefaultPanel('sports-standings-epl', () => import('@/components/SportsStandingsPanel'), 'EplStandingsPanel');
+    this.lazyDefaultPanel('sports-standings-mls', () => import('@/components/SportsStandingsPanel'), 'MlsStandingsPanel');
     this.lazyDefaultPanel('sports-schedule', () => import('@/components/SportsSchedulePanel'), 'SportsSchedulePanel');
     this.lazyDefaultPanel('sports-news', () => import('@/components/SportsNewsPanel'), 'SportsNewsPanel');
+    this.lazyDefaultPanel('sports-streams', () => import('@/components/SportsStreamsPanel'), 'SportsStreamsPanel');
+    this.lazyDefaultPanel('sports-insights', () => import('@/components/SportsInsightsPanel'), 'SportsInsightsPanel');
 
     // Extra multiscreen "My Live Streams" instances the user has added
     // (base panel above is the always-on singleton; these are optional

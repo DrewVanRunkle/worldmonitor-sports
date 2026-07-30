@@ -1,6 +1,11 @@
-// Personal-use widget (VITE_ENABLE_SPORTS_STANDINGS): pulls current league
+// Personal-use widget (part of VITE_ENABLE_SPORTS): pulls current league
 // standings from ESPN's public site API. No API key required, no first-party
 // backend involved — this hits ESPN directly from the browser.
+//
+// League metadata (slug/label) is shared with sports-scores.ts's LEAGUES —
+// same six leagues as the per-league score panels, same ESPN site-API sport
+// slugs (standings and scoreboard live under the same sport/league path).
+import { LEAGUES, type LeagueKey } from '@/services/sports-scores';
 
 export interface StandingsTeam {
   id: string;
@@ -16,23 +21,6 @@ export interface StandingsGroup {
   groupLabel: string;
   teams: StandingsTeam[];
 }
-
-export interface LeagueStandings {
-  leagueLabel: string;
-  groups: StandingsGroup[];
-}
-
-interface LeagueDef {
-  slug: string;
-  label: string;
-}
-
-const LEAGUES: LeagueDef[] = [
-  { slug: 'football/nfl', label: 'NFL' },
-  { slug: 'basketball/nba', label: 'NBA' },
-  { slug: 'baseball/mlb', label: 'MLB' },
-  { slug: 'hockey/nhl', label: 'NHL' },
-];
 
 interface EspnStandingStat {
   name: string;
@@ -83,23 +71,17 @@ function flattenGroups(groups: EspnStandingsGroup[] | undefined, label: string):
   return out;
 }
 
-async function fetchLeagueStandings(def: LeagueDef, signal: AbortSignal): Promise<StandingsGroup[]> {
+function getLeagueDef(key: LeagueKey) {
+  const def = LEAGUES.find(l => l.key === key);
+  if (!def) throw new Error(`Unknown league key: ${key}`);
+  return def;
+}
+
+export async function fetchSingleLeagueStandings(key: LeagueKey, signal: AbortSignal): Promise<StandingsGroup[]> {
+  const def = getLeagueDef(key);
   const url = `https://site.api.espn.com/apis/v2/sports/${def.slug}/standings`;
   const resp = await fetch(url, { signal });
   if (!resp.ok) throw new Error(`ESPN ${def.label} standings: ${resp.status}`);
   const data = await resp.json() as EspnStandingsResponse;
   return flattenGroups(data.children, def.label);
-}
-
-export async function fetchAllStandings(signal: AbortSignal): Promise<LeagueStandings[]> {
-  const results = await Promise.allSettled(
-    LEAGUES.map(async def => ({ label: def.label, groups: await fetchLeagueStandings(def, signal) })),
-  );
-  const boards: LeagueStandings[] = [];
-  for (const result of results) {
-    if (result.status === 'fulfilled' && result.value.groups.length > 0) {
-      boards.push({ leagueLabel: result.value.label, groups: result.value.groups });
-    }
-  }
-  return boards;
 }

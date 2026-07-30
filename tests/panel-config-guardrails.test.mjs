@@ -600,6 +600,13 @@ describe('panel-config guardrails', () => {
       'sports-mlb|sports-map', 'sports-map|sports-mlb',
       'sports-nhl|sports-epl', 'sports-epl|sports-nhl',
       'sports-mls|sports-map', 'sports-map|sports-mls',
+      // Same reasoning, one tier down: the per-league standings panels.
+      'sports-standings-nfl|sports-standings-nba', 'sports-standings-nba|sports-standings-nfl',
+      'sports-standings-nfl|sports-standings-nhl', 'sports-standings-nhl|sports-standings-nfl',
+      'sports-standings-nfl|sports-standings-epl', 'sports-standings-epl|sports-standings-nfl',
+      'sports-standings-nba|sports-standings-nhl', 'sports-standings-nhl|sports-standings-nba',
+      'sports-standings-mlb|sports-standings-mls', 'sports-standings-mls|sports-standings-mlb',
+      'sports-standings-nhl|sports-standings-epl', 'sports-standings-epl|sports-standings-nhl',
     ]);
     const typos = [];
     for (let i = 0; i < keys.length; i++) {

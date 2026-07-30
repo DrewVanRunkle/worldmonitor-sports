@@ -16,10 +16,13 @@ const _desktop = isDesktopRuntime();
 // map-layer-definitions.ts and tests/browser-bundle-secret-guard (allowlist).
 const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
-// Personal-use Sports category (scores/schedule, standings, headlines, venue
-// map, streams, AI recap), default OFF everywhere. Panel keys only exist in
-// FULL_PANELS (and therefore ALL_PANELS/VARIANT_DEFAULTS) when explicitly
-// enabled via local .env, so they never appear for other users/deployments.
+// Personal-use Sports category (scores, schedule date-nav, venue map,
+// standings, upcoming games, headlines, streams, AI recap), default OFF
+// everywhere. Panel keys only exist in FULL_PANELS (and therefore
+// ALL_PANELS/VARIANT_DEFAULTS) when explicitly enabled via local .env, so
+// they never appear for other users/deployments. One flag for the whole
+// category rather than per-panel flags — it's a single personal feature,
+// not independently-toggleable widgets.
 const SPORTS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_SPORTS === 'true';
 
 // ============================================
@@ -141,11 +144,16 @@ const FULL_PANELS: Record<string, PanelConfig> = {
     'sports-epl': { name: 'Premier League Scores', enabled: true, priority: 2 },
     'sports-mls': { name: 'MLS Scores', enabled: true, priority: 2 },
     'sports-map': { name: 'Sports Venue Map', enabled: true, priority: 2 },
-    'sports-streams': { name: 'My Live Streams', enabled: true, priority: 2 },
-    'sports-insights': { name: 'AI Sports Insights', enabled: true, priority: 2 },
-    'sports-standings': { name: 'Sports Standings', enabled: true, priority: 2 },
+    'sports-standings-nfl': { name: 'NFL Standings', enabled: true, priority: 2 },
+    'sports-standings-nba': { name: 'NBA Standings', enabled: true, priority: 2 },
+    'sports-standings-mlb': { name: 'MLB Standings', enabled: true, priority: 2 },
+    'sports-standings-nhl': { name: 'NHL Standings', enabled: true, priority: 2 },
+    'sports-standings-epl': { name: 'Premier League Standings', enabled: true, priority: 2 },
+    'sports-standings-mls': { name: 'MLS Standings', enabled: true, priority: 2 },
     'sports-schedule': { name: 'Upcoming Games', enabled: true, priority: 2 },
     'sports-news': { name: 'Sports Headlines', enabled: true, priority: 2 },
+    'sports-streams': { name: 'My Live Streams', enabled: true, priority: 2 },
+    'sports-insights': { name: 'AI Sports Insights', enabled: true, priority: 2 },
   }),
 };
 
@@ -1499,7 +1507,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   // these panel keys otherwise exist in the user's panel settings.
   sports: {
     labelKey: 'header.panelCatSports',
-    panelKeys: ['sports-nfl', 'sports-nba', 'sports-mlb', 'sports-nhl', 'sports-epl', 'sports-mls', 'sports-map', 'sports-streams', 'sports-insights', 'sports-standings', 'sports-schedule', 'sports-news'],
+    panelKeys: ['sports-nfl', 'sports-nba', 'sports-mlb', 'sports-nhl', 'sports-epl', 'sports-mls', 'sports-map', 'sports-standings-nfl', 'sports-standings-nba', 'sports-standings-mlb', 'sports-standings-nhl', 'sports-standings-epl', 'sports-standings-mls', 'sports-schedule', 'sports-news', 'sports-streams', 'sports-insights'],
     variants: ['full'],
   },
 };

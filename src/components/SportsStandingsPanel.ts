@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
-import { fetchAllStandings, type LeagueStandings, type StandingsGroup } from '@/services/sports-standings';
+import { fetchSingleLeagueStandings, type StandingsGroup } from '@/services/sports-standings';
+import { isLeagueInSeason, type LeagueKey } from '@/services/sports-scores';
 
 const REFRESH_MS = 15 * 60_000;
 
@@ -16,31 +17,36 @@ function renderGroup(group: StandingsGroup): string {
     </div>`;
 }
 
-function renderLeague(league: LeagueStandings): string {
-  return `
-    <div style="margin-bottom:10px">
-      <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;padding:4px 8px">${escapeHtml(league.leagueLabel)}</div>
-      ${league.groups.map(renderGroup).join('')}
-    </div>`;
-}
-
-export class SportsStandingsPanel extends Panel {
+/** Shared base for the per-league standings panels below — same pattern as
+ *  SportsLeaguePanel.ts's multiple exported panel classes from one file, so
+ *  vite.config.ts's PANEL_CLUSTER only needs a single "SportsStandings" entry. */
+abstract class SportsLeagueStandingsPanel extends Panel {
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly leagueKey: LeagueKey;
 
-  constructor() {
-    super({ id: 'sports-standings', title: 'Sports Standings', showCount: false, collapsible: true });
+  constructor(id: string, title: string, leagueKey: LeagueKey) {
+    super({ id, title, showCount: false, collapsible: true });
+    this.leagueKey = leagueKey;
     void this.fetchData();
     this.refreshTimer = setInterval(() => void this.fetchData(), REFRESH_MS);
   }
 
   public async fetchData(): Promise<boolean> {
     try {
-      const leagues = await fetchAllStandings(this.signal);
-      if (leagues.length === 0) {
+      if (!isLeagueInSeason(this.leagueKey)) {
+        this.setSafeContent(unsafeRawHtml(
+          '<div style="text-align:center;padding:12px;font-size:12px;color:var(--text-dim)">Off-season</div>',
+          'sports standings panel — off-season state',
+        ));
+        return true;
+      }
+
+      const groups = await fetchSingleLeagueStandings(this.leagueKey, this.signal);
+      if (groups.length === 0) {
         this.showError('No standings available', () => void this.fetchData());
         return false;
       }
-      const html = leagues.map(renderLeague).join('');
+      const html = groups.map(renderGroup).join('');
       this.setSafeContent(unsafeRawHtml(html, 'sports standings panel — trusted static markup, escaped team/record fields'));
       return true;
     } catch (e) {
@@ -57,4 +63,28 @@ export class SportsStandingsPanel extends Panel {
     }
     super.destroy();
   }
+}
+
+export class NflStandingsPanel extends SportsLeagueStandingsPanel {
+  constructor() { super('sports-standings-nfl', 'NFL Standings', 'nfl'); }
+}
+
+export class NbaStandingsPanel extends SportsLeagueStandingsPanel {
+  constructor() { super('sports-standings-nba', 'NBA Standings', 'nba'); }
+}
+
+export class MlbStandingsPanel extends SportsLeagueStandingsPanel {
+  constructor() { super('sports-standings-mlb', 'MLB Standings', 'mlb'); }
+}
+
+export class NhlStandingsPanel extends SportsLeagueStandingsPanel {
+  constructor() { super('sports-standings-nhl', 'NHL Standings', 'nhl'); }
+}
+
+export class EplStandingsPanel extends SportsLeagueStandingsPanel {
+  constructor() { super('sports-standings-epl', 'Premier League Standings', 'epl'); }
+}
+
+export class MlsStandingsPanel extends SportsLeagueStandingsPanel {
+  constructor() { super('sports-standings-mls', 'MLS Standings', 'mls'); }
 }
